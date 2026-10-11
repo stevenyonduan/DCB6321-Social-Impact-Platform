@@ -1,0 +1,10 @@
+# Opt-in only: use a separate development Supabase project, never production.
+spring:
+  datasource:
+    url: ${SIP_DB_URL}
+    username: ${SIP_DB_USERNAME}
+    password: ${SIP_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: never
