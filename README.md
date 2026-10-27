@@ -2,7 +2,7 @@
 
 Georgia Tech DCB6321 Senior Design project for client Tracy Dansby. SIP connects college students and young adults in Atlanta with nonprofits and volunteer opportunities, combining discovery with a volunteering community.
 
-This repository prepares Development Readiness Sections 1–3. It contains specifications and a minimal runnable environment, not product features. Section 4 belongs to another teammate. No database schema or production deployment is included.
+This repository prepares Development Readiness Sections 1–3 and now includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). Real authentication and product backend features are not implemented. Section 4 belongs to another teammate. No database schema or production deployment is included.
 
 ## Approved stack and repository
 
@@ -38,7 +38,7 @@ npm run dev
 
 The starter does not need an environment file. For future approved integration work, copy `frontend/.env.example` to `frontend/.env.local` and replace the placeholders with development configuration.
 
-Open `http://127.0.0.1:5173`. The starter has a project heading and readiness message. Vite proxies `/api` to the local backend at `http://127.0.0.1:8080`; optional exported `DEV_API_TARGET` changes the proxy destination. `VITE_API_BASE_URL=/api` is reserved for future API code; the starter makes no API requests. `npm run preview` serves the production build locally after `npm run build`.
+Open `http://127.0.0.1:5173`. The frontend demo runs independently of the backend with local assets and sample content. Use made-up details in its login/sign-up forms. Vite proxies `/api` to the local backend at `http://127.0.0.1:8080`; optional exported `DEV_API_TARGET` changes the proxy destination. `VITE_API_BASE_URL=/api` is reserved for future API code; the demo makes no API requests. `npm run preview` serves the production build locally after `npm run build`.
 
 ## Run the backend
 
