@@ -2,6 +2,8 @@
 
 ## Sources and current status
 
+**Local frontend demo update:** The user subsequently approved SOW branding, a landing page with a split photo background, centered login/sign-up forms, and a homepage with community posts on the left and opportunities on the right. This scope is implemented as a local presentation with simulated navigation/session state. See [demo instructions and boundaries](../../frontend/DEMO.md). The original source-backed responsibilities and unresolved product policies below remain distinct from that demo approval.
+
 - [Detailed Design Document](../../Detailed%20Design%20Doc.pdf) (DDD), pp. 6–9 and 12–19: documented capabilities, component responsibilities, data fields and privacy requirements.
 - [SIP6321 low-fidelity Figma prototype](https://www.figma.com/design/nkfx59VlujP8wPBWxXenmF/SIP6321-LowFidelity?node-id=0-1): supplied by the user as the project's prototype reference.
 
@@ -11,7 +13,7 @@ The Figma link has been supplied, but its frames and interactions could not be i
 
 The DDD specifies React + TypeScript and a presentation layer that depends on the Spring Boot REST API (pp. 7–9). The interface includes profiles, feed and events; backend services handle application responsibilities.
 
-The current scaffold uses src/main.tsx as the React entry point and src/App.tsx as the root component. These are implementation facts, not prototype requirements. Additional component directories, routing, state management and UI libraries have not been selected by the DDD. The starter heading/readiness message is not a product screen.
+The frontend uses src/main.tsx as its React entry point and src/App.tsx as its root component. The local demo adds page components, shared presentation components, a stylesheet, and separate demo fixtures/session helpers. It uses browser history for its four local paths and makes no API requests. These are demo implementation choices, not production API or authentication requirements selected by the DDD.
 
 ## Interface responsibilities supported by the DDD
 
