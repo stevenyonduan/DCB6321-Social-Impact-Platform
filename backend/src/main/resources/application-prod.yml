@@ -1,0 +1,14 @@
+server:
+  address: 0.0.0.0
+  tomcat:
+    threads:
+      max: 20
+      min-spare: 2
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  sql:
+    init:
+      mode: never
