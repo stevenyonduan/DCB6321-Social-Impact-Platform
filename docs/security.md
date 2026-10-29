@@ -28,7 +28,7 @@ Only return public profile fields approved by the team; email, saved items, priv
 
 JPEG/PNG images and file type/size validation are approved (DDD p. 19). **PROPOSED safeguards:** inspect actual file signatures, enforce a team-approved byte limit server-side, generate object names, check ownership, restrict buckets and MIME types, and use authorized access/signed URLs for private message files. A browser-supplied MIME type or URL alone is insufficient. Bucket policy, limits, retention and the mismatch between signed URL length/lifetime and `VARCHAR(255)` references are D06. Do not invent volunteer-evidence storage.
 
-HTTPS is required for hosted frontend/API/Auth/Storage traffic. Verify database TLS certificates; the example uses `sslmode=verify-full` and may require a provider CA certificate in the driver trust configuration. Loopback HTTP is acceptable for the scaffold. **PROPOSED:** restrict CORS to approved frontend origins; use the Vite development proxy locally; rate limits and session storage strategy require review.
+HTTPS is required for hosted frontend/API/Auth/Storage traffic. Per the October 29, 2026 university-project deployment request, Render supports `sslmode=require`: database TLS encryption is mandatory, but this mode does not verify the server certificate or hostname and needs no separate CA file. Optional `sslmode=verify-full` remains supported with a trusted CA file; see [deployment configuration](../backend/DEPLOYMENT.md). Loopback HTTP is acceptable for the scaffold. The backend supports optional exact-origin CORS configuration for `/api/**`; use the Vite development proxy locally. Rate limits and session storage strategy still require review.
 
 ## Configuration and database access
 

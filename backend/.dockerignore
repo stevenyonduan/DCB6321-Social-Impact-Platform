@@ -1,0 +1,26 @@
+# Allow only the files needed to compile and test the backend.
+**
+!Dockerfile
+!.dockerignore
+!pom.xml
+!mvnw
+!.mvn/
+!.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.properties
+!src/
+!src/**
+# Exclude local configuration and secrets even if placed under src/.
+**/.env
+**/.env.*
+**/*local.properties
+**/application-*.local.*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
+**/*.jks
+**/credentials*
+**/secrets/**
+**/.DS_Store
+**/*.log

@@ -1,0 +1,4 @@
+# Compatibility alias for the earlier preparation; use prod going forward.
+spring:
+  config:
+    import: classpath:application-prod.yml

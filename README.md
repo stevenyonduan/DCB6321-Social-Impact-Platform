@@ -6,7 +6,7 @@ This repository prepares Development Readiness Sections 1–3 and now includes a
 
 ## Approved stack and repository
 
-React + TypeScript; Java + Spring Boot REST/JSON; PostgreSQL on Supabase; Supabase Auth and Storage; Vercel frontend hosting. Backend hosting is pending.
+React + TypeScript; Java + Spring Boot REST/JSON; PostgreSQL on Supabase; Supabase Auth and Storage; Vercel frontend hosting. Docker configuration for Render backend hosting is prepared; see [Render deployment instructions](backend/DEPLOYMENT.md). No deployment has been performed.
 
 ```text
 docs/                         Architecture, data, API, security and decision specifications
@@ -65,11 +65,13 @@ Copy templates only to ignored local files. Spring Boot **does not automatically
 | --- | --- | --- |
 | VITE_API_BASE_URL | Future frontend API adapter | `/api` locally; approved hosted API URL later |
 | VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY | Future frontend Auth integration | Public development project configuration |
-| SPRING_PROFILES_ACTIVE | Spring | `local` (offline default) or explicit `database` |
-| SERVER_ADDRESS / SERVER_PORT | Spring | Default 127.0.0.1 / 8080 |
+| SPRING_PROFILES_ACTIVE | Spring | `local` (offline default), explicit `database`, or Docker's `prod` default (`render` is a compatibility alias) |
+| SERVER_ADDRESS / SERVER_PORT | Spring | Local defaults 127.0.0.1 / 8080; `PORT` takes precedence over SERVER_PORT |
 | SIP_DB_URL | Spring database profile | Development-only JDBC PostgreSQL URL with TLS |
 | SIP_DB_USERNAME / SIP_DB_PASSWORD | Spring database profile | Development database credentials |
 | SUPABASE_URL | Future backend Auth integration | Project URL; presently unused |
+| SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD | Backend prod profile | Standard Render database settings; see [deployment guide](backend/DEPLOYMENT.md) for required TLS encryption and optional certificate verification |
+| SIP_CORS_ALLOWED_ORIGINS | Backend | Optional comma-separated exact frontend origins for `/api/**`; disabled by default |
 | DEV_API_TARGET | Vite config process | Optional dev proxy destination; export before starting Vite |
 
 Database access is opt-in. Obtain a separate **development** Supabase connection string from the team's project settings, choose direct vs session-pooler connectivity for the network, and supply its host, port, username and password. Do not guess the username or use production. Example configuration (replace placeholders in your private shell/IDE configuration):
