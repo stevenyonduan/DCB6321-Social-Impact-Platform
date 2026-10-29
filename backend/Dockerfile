@@ -1,10 +1,5 @@
 # Build context: backend/ (Render Root Directory).
 FROM eclipse-temurin:21-jdk-jammy AS build
-# The wrapper pins the ZIP checksum. Without unzip it falls back to tar.gz,
-# whose different checksum fails validation. Keep unzip in the build stage only.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends unzip \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
