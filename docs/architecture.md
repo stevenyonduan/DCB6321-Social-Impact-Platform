@@ -29,7 +29,7 @@ The [data model and original relationship diagram](data-model.md#relationship-di
 ## Integration boundaries
 
 - React calls Spring Boot REST endpoints over HTTPS with JSON. [api.md](api.md) records the DDD interface requirements; endpoint contracts and token transport remain unspecified. The scaffold health endpoint is documented separately.
-- Spring services apply authorization and business rules before using database repositories. JDBC is scaffolded; ORM choice and migrations are pending. Browser access must not bypass backend business logic.
+- Spring services apply authorization and business rules before using database repositories. The account persistence ticket adds Spring Data JPA and a manually applied, versioned users-table migration; see [account persistence](../backend/ACCOUNTS.md). Browser access must not bypass backend business logic.
 - Supabase Auth owns authentication and passwords. A proposed integration uses its browser client for sessions and backend verification of access tokens before resolving `users.id`. Signup-to-profile synchronization, signing-key configuration and role provisioning need confirmation (D02, D07).
 - Supabase Storage owns image bytes; approved tables store URL references. JPEG/PNG and type/size validation are approved. Bucket policy, maximum size, private URL strategy and upload route remain pending (D06).
 - Production uses HTTPS. Local loopback HTTP is only a development convenience. Vercel deployment and backend deployment are not configured in this readiness task.
