@@ -72,8 +72,8 @@ public class UserService {
     }
 
     private static void requireText(String value, int limit, String field) {
-        // Preserve exact values: normalization and blank-text policy are separate decisions.
-        if (value == null || value.codePointCount(0, value.length()) > limit) {
+        // Reject blank text while preserving exact valid values, including email case.
+        if (value == null || value.isBlank() || value.codePointCount(0, value.length()) > limit) {
             throw new IllegalArgumentException(
                     field + " is required and must fit its column limit");
         }

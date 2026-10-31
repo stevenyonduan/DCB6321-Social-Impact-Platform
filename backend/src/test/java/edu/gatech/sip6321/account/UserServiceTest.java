@@ -15,6 +15,8 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.dao.DataIntegrityViolationException;
 
 class UserServiceTest {
@@ -129,6 +131,39 @@ class UserServiceTest {
         assertThatThrownBy(() -> service.existsByEmail("x".repeat(256)))
                 .isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(users);
+    }
+
+    @ParameterizedTest
+    @EmptySource
+    @ValueSource(strings = {" ", "\t", "\r\n", " \t\n", "\u2003"})
+    void rejectsEmptyAndWhitespaceOnlyRequiredFieldsBeforeDatabaseAccess(String value) {
+        assertThatThrownBy(() -> service.createStandardAccount(id, value, "First", "Last"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.createStandardAccount(id, EMAIL, value, "Last"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.createStandardAccount(id, EMAIL, "First", value))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.getByEmail(value))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.existsByEmail(value))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void preservesExactValidValuesForCreationAndEmailQueries() {
+        when(users.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        String email = " MixedCase@example.test ";
+        User user = service.createStandardAccount(id, email, " First ", " Last ");
+        assertThat(user.getEmail()).isEqualTo(email);
+        assertThat(user.getFirstName()).isEqualTo(" First ");
+        assertThat(user.getLastName()).isEqualTo(" Last ");
+        when(users.findByEmail(email)).thenReturn(Optional.of(user));
+        when(users.existsByEmail(email)).thenReturn(true);
+        assertThat(service.getByEmail(email)).isSameAs(user);
+        assertThat(service.existsByEmail(email)).isTrue();
+        verify(users).findByEmail(email);
+        verify(users, org.mockito.Mockito.times(2)).existsByEmail(email);
     }
 
     @Test
