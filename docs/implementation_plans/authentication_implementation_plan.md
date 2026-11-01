@@ -1,5 +1,10 @@
 # Implementation Plan: Authentication UI and Account Access Flow
 
+> Historical proposal, not authorization for broader auth work. The owner subsequently approved
+> only the backend single-step STANDARD signup described in [backend/SIGNUP.md](../../backend/SIGNUP.md),
+> with email confirmation disabled. Public role selection and login/profile/frontend work below
+> are not approved or implemented by that ticket.
+
 ## Purpose and authority
 
 This plan is limited to the front-end authentication pages and the adjacent API integration required to support login and sign-up flows in the current project. It is intentionally bounded to the approved guidance in the project documents and does not authorize broader product features or schema changes beyond the approved readiness scope.

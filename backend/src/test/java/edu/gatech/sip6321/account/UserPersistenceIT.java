@@ -2,7 +2,12 @@ package edu.gatech.sip6321.account;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
+import edu.gatech.sip6321.auth.SignupFailure;
+import edu.gatech.sip6321.auth.SignupRequest;
+import edu.gatech.sip6321.auth.SignupService;
+import edu.gatech.sip6321.auth.SupabaseAuthClient;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -20,6 +25,7 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.TransactionSystemException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -265,5 +271,147 @@ class UserPersistenceIT {
 
     private void authIdentity(UUID identity) {
         jdbc.update("INSERT INTO auth.users (id) VALUES (?)", identity);
+    }
+
+    private SupabaseAuthClient signupAuth() {
+        SupabaseAuthClient auth = mock(SupabaseAuthClient.class);
+        when(auth.signup(any()))
+                .thenReturn(
+                        new SupabaseAuthClient.VerifiedSignup(
+                                id,
+                                EMAIL,
+                                new SupabaseAuthClient.Session(
+                                        "isolated-access",
+                                        "isolated-refresh",
+                                        "bearer",
+                                        3600,
+                                        Instant.now().getEpochSecond() + 3600)));
+        return auth;
+    }
+
+    private SignupRequest signupRequest() {
+        return new SignupRequest(EMAIL, "not-persisted", "Jane", "Doe");
+    }
+
+    @Test
+    void signupPersistsVerifiedUuidAndStandardRoleWithoutPasswordColumns() {
+        var response = new SignupService(signupAuth(), service).signup(signupRequest());
+        assertThat(response.user().id()).isEqualTo(id);
+        assertThat(response.user().role()).isEqualTo(UserRole.STANDARD);
+        assertThat(response.session().accessToken()).isEqualTo("isolated-access");
+        assertThat(service.getById(id).getEmail()).isEqualTo(EMAIL);
+        assertThat(service.getById(id).getFirstName()).isEqualTo("Jane");
+        assertThat(users.count()).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users'",
+                                String.class))
+                .noneMatch(name -> name.contains("password") || name.contains("token"));
+    }
+
+    @Test
+    void signupRetriesSerializationFailureInANewRealTransaction() {
+        installSignupFailure(false);
+        try {
+            var auth = signupAuth();
+            var response = new SignupService(auth, service).signup(signupRequest());
+            assertThat(response.user().id()).isEqualTo(id);
+            assertThat(users.count()).isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT last_value FROM public.signup_attempt_seq", Long.class))
+                    .isEqualTo(2);
+            verify(auth).signup(any());
+        } finally {
+            removeSignupFailure();
+        }
+    }
+
+    @Test
+    void persistentSignupFailureKeepsAuthIdentityForOperatorRecovery() {
+        installSignupFailure(true);
+        var auth = signupAuth();
+        try {
+            assertThatThrownBy(() -> new SignupService(auth, service).signup(signupRequest()))
+                    .isInstanceOf(SignupFailure.class)
+                    .hasNoCause()
+                    .extracting("code")
+                    .isEqualTo("ACCOUNT_PROVISIONING_FAILED");
+            assertThat(users.count()).isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM auth.users WHERE id=?",
+                                    Integer.class,
+                                    id))
+                    .isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT last_value FROM public.signup_attempt_seq", Long.class))
+                    .isEqualTo(2);
+            verify(auth).signup(any());
+        } finally {
+            removeSignupFailure();
+        }
+        // Authorized reconciliation reuses the known fixture identity in a fresh transaction.
+        service.createStandardAccount(id, EMAIL, "Jane", "Doe");
+        assertThat(service.getById(id).getRole()).isEqualTo(UserRole.STANDARD);
+        assertThat(users.count()).isEqualTo(1);
+        verifyNoMoreInteractions(auth);
+    }
+
+    @Test
+    void uncertainSignupCommitRecoversRealPersistedAccountWithoutAnotherInsert() {
+        var boundary = mock(UserService.class);
+        when(boundary.createStandardAccount(id, EMAIL, "Jane", "Doe"))
+                .thenAnswer(
+                        call -> {
+                            service.createStandardAccount(id, EMAIL, "Jane", "Doe");
+                            throw new TransactionSystemException(
+                                    "simulated lost commit acknowledgment");
+                        });
+        when(boundary.getById(id)).thenAnswer(call -> service.getById(id));
+        var response = new SignupService(signupAuth(), boundary).signup(signupRequest());
+        assertThat(response.user().id()).isEqualTo(id);
+        assertThat(users.count()).isEqualTo(1);
+        verify(boundary).createStandardAccount(id, EMAIL, "Jane", "Doe");
+    }
+
+    @Test
+    void signupEmailConflictNeverLinksToAnotherAuthUuid() {
+        UUID existing = UUID.randomUUID();
+        authIdentity(existing);
+        service.createStandardAccount(existing, EMAIL, "Original", "Account");
+        assertThatThrownBy(() -> new SignupService(signupAuth(), service).signup(signupRequest()))
+                .isInstanceOf(SignupFailure.class)
+                .extracting("status")
+                .isEqualTo(409);
+        assertThat(service.existsById(id)).isFalse();
+        assertThat(service.getById(existing).getFirstName()).isEqualTo("Original");
+        assertThat(users.count()).isEqualTo(1);
+    }
+
+    private void installSignupFailure(boolean persistent) {
+        jdbc.execute("CREATE SEQUENCE public.signup_attempt_seq");
+        jdbc.execute(
+                """
+                CREATE FUNCTION public.signup_failure_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+                DECLARE attempt bigint;
+                BEGIN
+                    attempt := nextval('public.signup_attempt_seq');
+                    IF attempt = 1 OR %s THEN
+                        RAISE EXCEPTION 'isolated serialization failure' USING ERRCODE = '40001';
+                    END IF;
+                    RETURN NEW;
+                END $$
+                """
+                        .formatted(persistent ? "TRUE" : "FALSE"));
+        jdbc.execute(
+                "CREATE TRIGGER signup_failure BEFORE INSERT ON public.users FOR EACH ROW EXECUTE FUNCTION public.signup_failure_fixture()");
+    }
+
+    private void removeSignupFailure() {
+        jdbc.execute("DROP TRIGGER signup_failure ON public.users");
+        jdbc.execute("DROP FUNCTION public.signup_failure_fixture()");
+        jdbc.execute("DROP SEQUENCE public.signup_attempt_seq");
     }
 }
