@@ -158,10 +158,14 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
             }
             if (status < 200 || status >= 300) {
                 String code = node.path("code").asString("");
+                // Unversioned Auth uses numeric code + symbolic error_code; newer responses
+                // use symbolic code. A present error_code takes precedence, even if invalid.
+                String loginCode =
+                        node.has("error_code") ? node.path("error_code").asString("") : code;
                 if (login
                         && (status == 400 || status == 401 || status == 422)
                         && Set.of("invalid_credentials", "email_not_confirmed", "user_banned")
-                                .contains(code)) {
+                                .contains(loginCode)) {
                     throw LoginFailure.credentials();
                 }
                 if (signup && (status == 400 || status == 422)) {

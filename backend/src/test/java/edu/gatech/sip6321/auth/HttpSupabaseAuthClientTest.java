@@ -3,9 +3,13 @@ package edu.gatech.sip6321.auth;
 import static edu.gatech.sip6321.auth.SignupFixtures.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import edu.gatech.sip6321.account.UserService;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import java.io.IOException;
@@ -20,9 +24,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -335,6 +343,139 @@ class HttpSupabaseAuthClientTest {
                 .extracting("status")
                 .isEqualTo(expected);
         assertThat(signups.get()).isEqualTo(1);
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "application/json",
+                "application/json; charset=utf-8",
+                "application/json;charset=UTF-8"
+            })
+    @ExtendWith(OutputCaptureExtension.class)
+    void actualSupabaseErrorFormatsReturnGeneric401ThroughController(
+            String type, CapturedOutput output) throws Exception {
+        contentType = type;
+        signupStatus = 400;
+        var users = mock(UserService.class);
+        var signup = mock(SignupService.class);
+        var mvc =
+                MockMvcBuilders.standaloneSetup(
+                                new AuthenticationController(
+                                        signup,
+                                        new LoginService(client(Duration.ofSeconds(2)), users)))
+                        .setControllerAdvice(new SignupExceptionHandler())
+                        .build();
+        for (String body :
+                List.of(
+                        "{\"code\":400,\"error_code\":\"invalid_credentials\",\"msg\":\"Invalid login credentials\"}",
+                        "{\"code\":\"invalid_credentials\",\"message\":\"Invalid login credentials\"}")) {
+            signupBody = body;
+            for (String email : List.of(EMAIL, "unknown@example.test")) {
+                // Repeat the same request, as in the reported production failure.
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    mvc.perform(
+                                    post("/api/auth/login")
+                                            .contentType("application/json")
+                                            .content(
+                                                    json.writeValueAsBytes(
+                                                            Map.of(
+                                                                    "email",
+                                                                    email,
+                                                                    "password",
+                                                                    PASSWORD))))
+                            .andExpect(status().isUnauthorized())
+                            .andExpect(header().string("Cache-Control", "no-store"))
+                            .andExpect(
+                                    content()
+                                            .json(
+                                                    "{\"code\":\"INVALID_CREDENTIALS\",\"message\":\"Invalid email or password.\"}"));
+                }
+            }
+        }
+        verifyNoInteractions(users, signup);
+        assertThat(lookups.get()).isZero();
+        assertThat(output.getAll())
+                .doesNotContain(
+                        PASSWORD,
+                        "access-never-log",
+                        "refresh-never-log",
+                        "sb_publishable_test",
+                        "Invalid login credentials",
+                        "error_code");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "400,invalid_credentials,401",
+        "401,invalid_credentials,401",
+        "422,invalid_credentials,401",
+        "400,email_not_confirmed,401",
+        "400,user_banned,401",
+        "400,validation_failed,502",
+        "400,captcha_failed,502",
+        "401,bad_key,502",
+        "422,email_provider_disabled,502",
+        "429,invalid_credentials,429",
+        "503,invalid_credentials,503"
+    })
+    void initialSupabaseErrorFormatPreservesStatusAndMeaning(
+            int upstream, String code, int expected) {
+        signupStatus = upstream;
+        signupBody =
+                json.writeValueAsString(
+                        Map.of(
+                                "code",
+                                upstream,
+                                "error_code",
+                                code,
+                                "msg",
+                                PASSWORD
+                                        + " access-never-log refresh-never-log sb_publishable_test"));
+        assertThatThrownBy(this::login)
+                .isInstanceOf(LoginFailure.class)
+                .hasNoCause()
+                .hasMessageNotContaining(PASSWORD)
+                .hasMessageNotContaining("access-never-log")
+                .hasMessageNotContaining("refresh-never-log")
+                .hasMessageNotContaining("sb_publishable_test")
+                .extracting("status")
+                .isEqualTo(expected);
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"code\":400,\"msg\":\"Invalid login credentials\"}",
+                "{\"code\":400,\"error_code\":null}",
+                "{\"code\":400,\"error_code\":401}",
+                "{\"code\":400,\"error_code\":[\"invalid_credentials\"]}",
+                "{\"code\":\"invalid_credentials\",\"error_code\":\"unexpected_failure\"}",
+                "{\"code\":\"invalid_credentials\",\"error_code\":null}",
+                "{\"error\":\"invalid_grant\",\"error_description\":\"Invalid login credentials\"}",
+                "{\"error_code\":\"invalid_credentials\"",
+                "not json",
+                "[]",
+                "null",
+                "{}"
+            })
+    void malformedOrUnrecognized400ResponsesStayUpstreamFailures(String body) {
+        signupStatus = 400;
+        signupBody = body;
+        invalidLogin();
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"text/plain", "text/html", "application/problem+json"})
+    void credentialCodeInUnexpectedContentTypeIsNotTrusted(String type) {
+        contentType = type;
+        signupStatus = 400;
+        signupBody =
+                "{\"code\":400,\"error_code\":\"invalid_credentials\",\"msg\":\"Invalid login credentials\"}";
+        invalidLogin();
         assertThat(lookups.get()).isZero();
     }
 

@@ -63,8 +63,25 @@ Errors have the existing `{"code":"STABLE_CODE","message":"Safe message."}` stru
 
 Provider `invalid_credentials`, `email_not_confirmed`, and `user_banned` rejections on 400/401/422
 map to the identical 401 body: `{"code":"INVALID_CREDENTIALS","message":"Invalid email or password."}`.
+Login accepts both Supabase error formats: unversioned responses use numeric `code` plus symbolic
+`error_code` (for example, `{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}`),
+while newer versioned responses use symbolic `code` plus `message`. When present, `error_code`
+takes precedence; a null, malformed, or unknown value cannot fall back to a recognized `code`.
+Only the allowlisted symbolic codes above on the allowed statuses map to 401. Provider messages
+are never matched, logged, or returned. JSON with optional charset parameters is accepted;
+non-JSON content types and malformed JSON still fail closed.
+
+The previous implementation checked only symbolic `code`, so the numeric-code payload reproduced
+the reported production 502. The JDK HTTP client returns non-2xx responses without throwing for
+status alone; classification, rather than an early HTTP status exception or the global handler,
+caused this failure. No live provider response body was captured during this fix. Supabase's
+[error response implementation](https://github.com/supabase/auth/blob/master/internal/api/errors.go)
+selects between API-version-specific formats; its
+[password grant implementation](https://github.com/supabase/auth/blob/master/internal/api/token.go)
+uses `invalid_credentials` for both unknown users and incorrect passwords.
+
 Invalid API keys, CAPTCHA requirements, and unknown provider errors fail closed as 502, rather than
-being mistaken for bad user credentials.
+being mistaken for bad user credentials. Signup retains its existing error mapping.
 
 ## Identity and persistence
 
@@ -213,3 +230,24 @@ Tracked/staged diff whitespace checks and untracked-file whitespace review passe
 links and smoke-test Python syntax were checked. Existing references to
 `docs/development-decisions.md` and `docs/readiness-report.md` point to absent files; this ticket
 follows the explicit login request and does not resolve broader architecture/product decisions.
+
+### Incorrect-password regression fix
+
+The initial-format invalid-credentials payload reproduced HTTP 502 before the fix for all three
+tested JSON content types. After the login-only extraction fix, all 80 HTTP client tests passed,
+including controller/service/client integration checks using a local Supabase stub. Regression
+coverage includes both API error formats, charset parameters, repeated requests, unknown emails,
+incorrect passwords, upstream/configuration failures, malformed bodies/codes, content-type
+rejections, response/log sanitization, and no account or user-verification lookup on rejection.
+Existing success, signup, timeout, and network-failure tests remain green.
+
+Complete verification on November 1, 2026:
+
+| Command | Ordinary tests | PostgreSQL tests | Result |
+| --- | --- | --- | --- |
+| `./mvnw verify` | 226 passed | Not requested | BUILD SUCCESS |
+| `./mvnw -Ppostgres-it verify` | 226 passed | 17 passed | BUILD SUCCESS |
+
+Zero failures, errors, or skips. Formatting and tracked/staged diff whitespace checks passed.
+Only the Auth client, its HTTP tests, and this document changed. No live Supabase/Render request,
+production database access, configuration change, commit, push, merge, or deployment was performed.
