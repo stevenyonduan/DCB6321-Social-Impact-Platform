@@ -1,10 +1,14 @@
 package edu.gatech.sip6321.auth;
 
+import static edu.gatech.sip6321.diagnostics.DatabaseDiagnostics.Operation.ACCOUNT_CREATE;
+import static edu.gatech.sip6321.diagnostics.DatabaseDiagnostics.Operation.ACCOUNT_LOOKUP;
+
 import edu.gatech.sip6321.account.AccountNotFoundException;
 import edu.gatech.sip6321.account.DuplicateAccountException;
 import edu.gatech.sip6321.account.User;
 import edu.gatech.sip6321.account.UserRole;
 import edu.gatech.sip6321.account.UserService;
+import edu.gatech.sip6321.diagnostics.DatabaseDiagnostics;
 import java.time.Instant;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -23,22 +27,31 @@ public class SignupService {
     }
 
     public SignupResponse signup(SignupRequest request) {
+        return DatabaseDiagnostics.signup(() -> signupWithDiagnostics(request));
+    }
+
+    private SignupResponse signupWithDiagnostics(SignupRequest request) {
         var identity = auth.signup(request); // Exactly once, even when JDBC fails.
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                User user = attempt == 0 ? null : matchingAccount(identity);
+                User user = attempt == 0 ? null : matchingAccount(identity, attempt + 1);
                 if (user == null) {
+                    int currentAttempt = attempt + 1;
                     user =
-                            users.createStandardAccount(
-                                    identity.id(),
-                                    identity.email(),
-                                    request.firstName(),
-                                    request.lastName());
+                            DatabaseDiagnostics.operation(
+                                    ACCOUNT_CREATE,
+                                    currentAttempt,
+                                    () ->
+                                            users.createStandardAccount(
+                                                    identity.id(),
+                                                    identity.email(),
+                                                    request.firstName(),
+                                                    request.lastName()));
                 }
                 return response(user, identity);
             } catch (DuplicateAccountException exception) {
                 try {
-                    User existing = matchingAccount(identity);
+                    User existing = matchingAccount(identity, attempt + 1);
                     if (existing != null) {
                         return response(existing, identity);
                     }
@@ -62,7 +75,12 @@ public class SignupService {
         throw SignupFailure.provisioning();
     }
 
-    private User matchingAccount(SupabaseAuthClient.VerifiedSignup identity) {
+    private User matchingAccount(SupabaseAuthClient.VerifiedSignup identity, int attempt) {
+        return DatabaseDiagnostics.operation(
+                ACCOUNT_LOOKUP, attempt, () -> findMatchingAccount(identity));
+    }
+
+    private User findMatchingAccount(SupabaseAuthClient.VerifiedSignup identity) {
         try {
             User user = users.getById(identity.id());
             if (!user.getEmail().equals(identity.email()) || user.getRole() != UserRole.STANDARD) {

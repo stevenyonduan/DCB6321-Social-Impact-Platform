@@ -171,6 +171,80 @@ exception chains. Close the context with `context.close()` and exit JShell. This
 executed by the signup service. There is no durable queue or automatic reconciliation across
 process crashes; persistent failures require this operator workflow.
 
+## Safe database diagnostics
+
+The diagnostic-only patch emits `db.diagnostic` key/value log lines at INFO for start/success and
+WARN for failures. No new environment variables, log-level changes, connection attempts, SQL,
+timeout changes, pool tuning, or TLS changes are introduced. Deployment remains a separately
+authorized action. The API response, original exception objects, retry count, and transaction
+boundaries are preserved.
+
+`account.create` and `account.lookup` enclose calls to the transactional UserService proxy, including
+transaction initialization and completion. Every operation is timed with a monotonic clock.
+`connection.acquire` encloses the existing Hikari `getConnection()` call in production profiles,
+including lazy pool initialization; the returned connection is passed through unchanged.
+
+Each signup gets a new server-generated `correlationId`, unrelated to any account UUID or request
+header. Account operations and their synchronous connection acquisitions share it across both
+attempts. Scope state is removed/restored on success and failure, including reused request threads.
+An acquisition outside signup (for example, the existing startup connectivity probe) gets its own
+correlation ID, with `parentOperation=none` and `attempt=0`. The correlation ID is log-only; no new
+response field/header is added.
+
+Allowlisted fields are `correlationId`, `operation`, `parentOperation`, `attempt`, `event`,
+`connectionAcquired`, `elapsedMs`, `exception`, `sqlException`, and `sqlState`. Exception values
+are class names only. SQLSTATE extraction follows nested causes, chained SQLExceptions, and the
+original exception retained by TransactionSystemException, with cycle/size bounds. Only five-character
+uppercase alphanumeric SQLSTATE values are emitted; missing/invalid codes become `unknown`.
+No exception messages, stack traces, SQL parameters, URLs, credential values, request bodies,
+tokens, names, email addresses, or account identifiers are passed to the diagnostic logger.
+
+Example failure lines (illustrative values, not a diagnosis of the live deployment):
+
+```text
+db.diagnostic correlationId=57b54be4-a990-40c2-9340-6ddd021fd21a operation=connection.acquire parentOperation=account.create attempt=1 event=failure connectionAcquired=false elapsedMs=10005 exception=PSQLException sqlException=PSQLException sqlState=08001
+db.diagnostic correlationId=57b54be4-a990-40c2-9340-6ddd021fd21a operation=account.create parentOperation=none attempt=1 event=failure connectionAcquired=false elapsedMs=10010 exception=CannotCreateTransactionException sqlException=PSQLException sqlState=08001
+```
+
+After an approved deployment, use Render logs as follows:
+
+1. Search for `db.diagnostic` and `event=failure` near the observed request time, then filter by
+   that line's `correlationId`. It identifies a single signup without disclosing its account.
+2. Inspect the **first** failure as well as subsequent failures. Attempt 1 is initial account
+   creation; attempt 2 first checks for an existing committed account, then creates only if absent.
+   A duplicate race can also cause `account.lookup` during attempt 1.
+3. `connection.acquire event=failure connectionAcquired=false` means Hikari did not return a usable
+   connection to the caller. Investigate connection establishment/pool acquisition before changing
+   account SQL or grants. It does not prove that no physical TCP/DB connection was ever established.
+4. An account operation failing with `connectionAcquired=true` reached a handed-out connection;
+   investigate subsequent transaction setup, queries, flushing, or commit using the SQLSTATE.
+5. `connectionAcquired=unknown` means this operation did not observe acquisition through the
+   instrumented datasource. Do not interpret it as `false`. The development `database` profile
+   retains its original Boot datasource and can report `unknown`; production uses the instrumented
+   Hikari subclass. State resets between operations.
+6. A `connection.acquire event=start` with no terminal event identifies an acquisition still in
+   progress at that point (or an interrupted process/log stream). A long elapsed time alone is not
+   proof of a particular timeout; correlate it with exception class and SQLSTATE.
+
+Common codes from the [PostgreSQL SQLSTATE reference](https://www.postgresql.org/docs/current/errcodes-appendix.html):
+
+| SQLSTATE | Interpretation |
+| --- | --- |
+| 08001 | Client unable to establish SQL connection |
+| 08006 | Connection failure |
+| 28P01 | Invalid password |
+| 42501 | Insufficient privilege |
+| 23503 | Foreign-key violation |
+| 40001 | Serialization failure |
+
+A code is evidence of the reported failure category, not necessarily its complete cause. For
+example, 08001 does not distinguish every DNS, TCP, TLS, or pooler failure. Driver-only failures
+can have no SQLSTATE. Known duplicates sanitized by UserService may also have `sqlState=unknown`.
+The existing startup connectivity probe still suppresses Hikari/driver logger namespaces, but it
+does not suppress this application's `edu.gatech.sip6321.diagnostics.DatabaseDiagnostics` logger.
+Do not enable general JDBC/Hikari DEBUG logging to recover sensitive exception messages.
+Auth-only failures before any account operation do not emit these database diagnostics.
+
 ## Supabase settings before live testing
 
 The project owner/operator must review these in the **same project** used by Render's JDBC URL:
@@ -228,7 +302,21 @@ be pasted into shared logs, screenshots, or tickets.
 
 ## Verification
 
-Final local verification on November 1, 2026:
+The diagnostic-only patch was verified locally on November 1, 2026:
+
+| Command | Ordinary tests | PostgreSQL tests | Failures / errors / skips |
+| --- | --- | --- | --- |
+| `./mvnw verify` | 159 passed | Not requested | 0 / 0 / 0 |
+| `./mvnw -Ppostgres-it verify` | 159 passed | 16 passed | 0 / 0 / 0 |
+
+Both final runs completed with BUILD SUCCESS, Spotless checks, and JAR packaging. The first
+PostgreSQL attempt could not start because Docker Desktop was stopped; after starting Docker
+locally, the full rerun passed. The patch adds 14 ordinary diagnostic tests and one real-connection
+PostgreSQL test, and strengthens existing deployment assertions for unchanged pool/timeouts.
+No production users, records, settings, commits, or deployments were created or changed.
+Whitespace checks and local documentation links were also reviewed.
+
+Original signup implementation verification on November 1, 2026 (before the diagnostic patch):
 
 | Command | Ordinary tests | PostgreSQL tests | Failures / errors / skips |
 | --- | --- | --- | --- |
