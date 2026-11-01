@@ -7,6 +7,9 @@ public interface SupabaseAuthClient {
 
     VerifiedLogin login(LoginRequest request);
 
+    /** UUID returned only after Supabase authenticates the access token. */
+    UUID verifyAccessToken(String accessToken);
+
     /** Constructed only after authenticated user lookup verifies the session identity. */
     record VerifiedLogin(UUID id, String email, Session session) {
         @Override

@@ -82,6 +82,39 @@ class UserPersistenceIT {
     }
 
     @Test
+    void profileReadsOnlyVerifiedAccountAndDoesNotChangeOrProvisionRows() {
+        service.createStandardAccount(id, EMAIL, "First", "Last");
+        UUID other = UUID.randomUUID();
+        authIdentity(other);
+        service.createStandardAccount(other, "other@example.test", "Other", "User");
+        jdbc.update(
+                "UPDATE public.users SET bio = ?, avatar_url = ?, organization_id = ? WHERE id = ?",
+                "Volunteer",
+                "https://example.test/avatar.png",
+                other,
+                id);
+        var before = jdbc.queryForList("SELECT * FROM public.users ORDER BY id");
+        SupabaseAuthClient auth = mock(SupabaseAuthClient.class);
+        when(auth.verifyAccessToken("isolated-access")).thenReturn(id);
+        var profiles = new edu.gatech.sip6321.auth.ProfileService(auth, service);
+        var profile = profiles.me(List.of("Bearer isolated-access"));
+        assertThat(profile.id()).isEqualTo(id).isNotEqualTo(other);
+        assertThat(profile.bio()).isEqualTo("Volunteer");
+        assertThat(profile.avatarUrl()).isEqualTo("https://example.test/avatar.png");
+        assertThat(profile.organizationId()).isEqualTo(other);
+        assertThat(profile.createdAt()).isEqualTo(service.getById(id).getCreatedAt());
+        assertThat(jdbc.queryForList("SELECT * FROM public.users ORDER BY id")).isEqualTo(before);
+        jdbc.update("DELETE FROM public.users WHERE id = ?", id);
+        var remaining = jdbc.queryForList("SELECT * FROM public.users ORDER BY id");
+        assertThatThrownBy(() -> profiles.me(List.of("Bearer isolated-access")))
+                .isInstanceOf(edu.gatech.sip6321.auth.ProfileFailure.class)
+                .extracting("code")
+                .isEqualTo("ACCOUNT_PROVISIONING_REQUIRED");
+        assertThat(jdbc.queryForList("SELECT * FROM public.users ORDER BY id"))
+                .isEqualTo(remaining);
+    }
+
+    @Test
     void loginReadsExistingAccountWithoutChangingAnyColumnsAndNeverProvisionsMissingAccount() {
         service.createStandardAccount(id, EMAIL, "First", "Last");
         var before = jdbc.queryForList("SELECT * FROM public.users");

@@ -11,6 +11,12 @@ require operator reconciliation; Auth identities are never deleted as compensati
 verification/completion proposals for signup only. General protected-route JWT/authorization design
 below remains separate; this ticket adds no general authentication filter or frontend integration.
 
+The subsequently approved [authenticated profile endpoint](../backend/PROFILE.md) verifies each
+Bearer token through Supabase's authenticated user API using the existing Auth client, then reads
+only that verified UUID's application account. It does not use locally decoded JWT claims or add
+a general security filter. Own-profile email and the other existing account fields are explicitly
+authorized by this ticket; public profile exposure and broader authorization remain unresolved.
+
 Authority: DDD pp. 7 and 19, the approved roles/schema on pp. 12–18, and the user's explicit password correction. Detailed policies below marked **PROPOSED** need team review; the starter implements no authentication or permission system.
 
 ## Authentication and password correction

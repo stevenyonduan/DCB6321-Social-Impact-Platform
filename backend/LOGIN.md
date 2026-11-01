@@ -2,8 +2,9 @@
 
 `POST /api/auth/login` is enabled alongside [signup](SIGNUP.md) by `SIP_AUTH_ENABLED=true`
 with a database-capable profile. No new migration, dependency, Render variable, CORS policy,
-or Spring Security configuration is required. Profile, refresh/logout endpoints, MFA challenge
-handling, and frontend session integration remain separate work.
+or Spring Security configuration is required. The authenticated profile endpoint is now documented
+in [PROFILE.md](PROFILE.md). Refresh/logout endpoints, MFA challenge handling, and frontend session
+integration remain separate work.
 
 ## Contract
 

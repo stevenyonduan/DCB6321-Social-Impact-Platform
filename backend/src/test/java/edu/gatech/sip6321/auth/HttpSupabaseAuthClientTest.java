@@ -121,6 +121,91 @@ class HttpSupabaseAuthClientTest {
                 timeout);
     }
 
+    @Test
+    void profileUsesTheAccessTokenReturnedByLoginAndVerifiesOncePerRequest() throws Exception {
+        var auth = client(Duration.ofSeconds(2));
+        var users = mock(UserService.class);
+        when(users.getById(ID)).thenReturn(account());
+        var login = new LoginService(auth, users).login(new LoginRequest(EMAIL, PASSWORD));
+        var mvc =
+                MockMvcBuilders.standaloneSetup(
+                                new ProfileController(new ProfileService(auth, users)))
+                        .setControllerAdvice(new ProfileExceptionHandler())
+                        .build();
+        mvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                                        "/api/users/me")
+                                .header("Authorization", "Bearer " + login.session().accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ID.toString()))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        assertThat(signups.get()).isEqualTo(1);
+        assertThat(lookups.get()).isEqualTo(2);
+        verify(users, times(2)).getById(ID);
+        verifyNoMoreInteractions(users);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bad_jwt", "session_expired", "session_not_found"})
+    void profileRejectsInvalidAndExpiredTokens(String code) {
+        userStatus = 401;
+        userBody = "{\"code\":\"" + code + "\",\"msg\":\"access-never-log\"}";
+        assertThatThrownBy(
+                        () -> client(Duration.ofSeconds(2)).verifyAccessToken("access-never-log"))
+                .isInstanceOf(ProfileFailure.class)
+                .hasNoCause()
+                .extracting("status", "code")
+                .containsExactly(401, "UNAUTHORIZED");
+    }
+
+    @Test
+    void profileRejectsMalformedAndAnonymousIdentities() {
+        for (String body :
+                new String[] {
+                    "{}", "{\"id\":\"invalid\"}", "{\"id\":\"" + ID + "\",\"is_anonymous\":true}"
+                }) {
+            userBody = body;
+            assertThatThrownBy(
+                            () ->
+                                    client(Duration.ofSeconds(2))
+                                            .verifyAccessToken("access-never-log"))
+                    .isInstanceOf(ProfileFailure.class)
+                    .hasNoCause();
+        }
+    }
+
+    @Test
+    void profileMapsUpstreamOutageAndNetworkFailureTo503() {
+        userStatus = 503;
+        assertProfileUnavailable(client(Duration.ofSeconds(2)));
+        server.stop(0);
+        assertProfileUnavailable(client(Duration.ofMillis(100)));
+    }
+
+    @Test
+    void profileTimeoutIsBoundedAndReturns503() {
+        server.removeContext("/auth/v1/user");
+        server.createContext(
+                "/auth/v1/user",
+                exchange -> {
+                    try {
+                        Thread.sleep(300);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                    exchange.close();
+                });
+        assertProfileUnavailable(client(Duration.ofMillis(50)));
+    }
+
+    private void assertProfileUnavailable(HttpSupabaseAuthClient auth) {
+        assertThatThrownBy(() -> auth.verifyAccessToken("access-never-log"))
+                .isInstanceOf(ProfileFailure.class)
+                .hasNoCause()
+                .extracting("status", "code")
+                .containsExactly(503, "AUTH_UNAVAILABLE");
+    }
+
     private Map<String, Object> sessionBody() {
         var session = identity().session();
         return Map.of(
