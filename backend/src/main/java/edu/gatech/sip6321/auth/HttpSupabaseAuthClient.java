@@ -90,6 +90,27 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
         }
     }
 
+    @Override
+    public UUID verifyAccessToken(String accessToken) {
+        try {
+            JsonNode user =
+                    exchange(
+                            builder("/auth/v1/user")
+                                    .header("Authorization", "Bearer " + accessToken)
+                                    .GET()
+                                    .build(),
+                            false,
+                            false,
+                            true);
+            if (user.path("is_anonymous").asBoolean(false)) {
+                throw ProfileFailure.unauthorized();
+            }
+            return identityId(user);
+        } catch (SignupFailure failure) {
+            throw ProfileFailure.fromAuth(failure);
+        }
+    }
+
     private VerifiedSignup verifySession(JsonNode signup) {
         JsonNode user = signup.path("user");
         UUID id = identityId(user);
@@ -132,11 +153,18 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
     }
 
     private JsonNode exchange(HttpRequest request, boolean signup, boolean login) {
+        return exchange(request, signup, login, false);
+    }
+
+    private JsonNode exchange(HttpRequest request, boolean signup, boolean login, boolean profile) {
         var pending = http.sendAsync(request, info -> new LimitedBodySubscriber());
         try {
             // Includes the entire response body, even if the peer sends headers then stalls.
             var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             int status = response.statusCode();
+            if (profile && status == 401) {
+                throw ProfileFailure.unauthorized();
+            }
             if (status == 429) {
                 throw new SignupFailure(429, "AUTH_RATE_LIMITED", "Please try again later.");
             }

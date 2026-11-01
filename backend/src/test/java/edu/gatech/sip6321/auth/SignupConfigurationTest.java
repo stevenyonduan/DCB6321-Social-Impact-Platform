@@ -37,7 +37,8 @@ class SignupConfigurationTest {
                                 assertThat(context)
                                         .hasNotFailed()
                                         .hasSingleBean(SignupService.class)
-                                        .hasSingleBean(LoginService.class));
+                                        .hasSingleBean(LoginService.class)
+                                        .hasSingleBean(ProfileService.class));
     }
 
     @ParameterizedTest

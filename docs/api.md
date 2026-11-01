@@ -7,9 +7,12 @@ STANDARD-only account creation, server-side validation of the returned Supabase 
 allowlisted JSON session delivery after application persistence. The exact contract, errors,
 configuration, and recovery limitations are in [backend/SIGNUP.md](../backend/SIGNUP.md).
 The subsequently approved `POST /api/auth/login` contract is documented in
-[backend/LOGIN.md](../backend/LOGIN.md). No profile or confirmation/completion endpoint is included.
+[backend/LOGIN.md](../backend/LOGIN.md). The subsequently approved `GET /api/users/me` contract is documented in
+[backend/PROFILE.md](../backend/PROFILE.md). It accepts a Supabase Bearer access token, verifies
+identity through the existing Auth client, and returns only that UUID's application profile with
+`Cache-Control: no-store`. No confirmation/completion or profile-editing endpoint is included.
 The DDD transcription below remains source history; endpoint details are resolved only for the
-authorized signup and login tickets.
+authorized signup, login, and authenticated-profile tickets.
 
 Source: [Detailed Design Document](../Detailed%20Design%20Doc.pdf) (DDD), pp. 5–9 and 12–19. This document records the interface requirements established by the DDD. The DDD does not define individual endpoint paths, HTTP methods, request/response schemas or error contracts; those details remain unspecified rather than being supplied as proposed contracts here.
 
