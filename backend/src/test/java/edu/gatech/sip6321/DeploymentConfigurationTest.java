@@ -3,6 +3,9 @@ package edu.gatech.sip6321;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.zaxxer.hikari.HikariDataSource;
+import edu.gatech.sip6321.account.UserRepository;
+import edu.gatech.sip6321.account.UserService;
+import jakarta.persistence.EntityManagerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -61,6 +64,10 @@ class DeploymentConfigurationTest {
                 .run(
                         context -> {
                             assertThat(context).hasNotFailed().doesNotHaveBean(DataSource.class);
+                            assertThat(context)
+                                    .doesNotHaveBean(EntityManagerFactory.class)
+                                    .doesNotHaveBean(UserRepository.class)
+                                    .doesNotHaveBean(UserService.class);
                             assertThat(context.getEnvironment().getProperty("server.address"))
                                     .isEqualTo("127.0.0.1");
                             assertThat(context.getEnvironment().getProperty("server.port"))
@@ -83,6 +90,13 @@ class DeploymentConfigurationTest {
                             assertThat(environment.getProperty("server.port")).isEqualTo("10000");
                             assertThat(environment.getProperty("spring.sql.init.mode"))
                                     .isEqualTo("never");
+                            assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto"))
+                                    .isEqualTo("none");
+                            assertThat(environment.getProperty("spring.jpa.open-in-view"))
+                                    .isEqualTo("false");
+                            assertThat(context)
+                                    .hasSingleBean(UserRepository.class)
+                                    .hasSingleBean(UserService.class);
                             var datasource = context.getBean(HikariDataSource.class);
                             assertThat(datasource.getJdbcUrl()).isEqualTo(ENCRYPTED_URL);
                             assertThat(datasource.getUsername()).isEqualTo("test-user");

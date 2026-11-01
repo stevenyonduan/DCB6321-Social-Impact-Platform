@@ -2,11 +2,11 @@
 
 Georgia Tech DCB6321 Senior Design project for client Tracy Dansby. SIP connects college students and young adults in Atlanta with nonprofits and volunteer opportunities, combining discovery with a volunteering community.
 
-This repository prepares Development Readiness Sections 1–3 and now includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). Real authentication and product backend features are not implemented. Section 4 belongs to another teammate. No database schema or production deployment is included.
+This repository prepares Development Readiness Sections 1–3 and includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. Local backend verification passed all 70 tests, including 10 isolated PostgreSQL integration tests. Real authentication and account endpoints are not implemented. Section 4 belongs to another teammate.
 
 ## Approved stack and repository
 
-React + TypeScript; Java + Spring Boot REST/JSON; PostgreSQL on Supabase; Supabase Auth and Storage; Vercel frontend hosting. Docker configuration for Render backend hosting is prepared; see [Render deployment instructions](backend/DEPLOYMENT.md). No deployment has been performed.
+React + TypeScript; Java + Spring Boot REST/JSON; PostgreSQL on Supabase; Supabase Auth and Storage; Vercel frontend hosting. The project owner reports an existing Render backend deployment. See the [backend configuration template](backend/.env.example) and [account deployment status](backend/ACCOUNTS.md#schema-and-deployment-status). The coding agent has not deployed the account persistence Java change or connected to the live database.
 
 ```text
 docs/                         Architecture, data, API, security and decision specifications
@@ -70,7 +70,7 @@ Copy templates only to ignored local files. Spring Boot **does not automatically
 | SIP_DB_URL | Spring database profile | Development-only JDBC PostgreSQL URL with TLS |
 | SIP_DB_USERNAME / SIP_DB_PASSWORD | Spring database profile | Development database credentials |
 | SUPABASE_URL | Future backend Auth integration | Project URL; presently unused |
-| SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD | Backend prod profile | Standard Render database settings; see [deployment guide](backend/DEPLOYMENT.md) for required TLS encryption and optional certificate verification |
+| SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD | Backend prod profile | Standard Render database settings; see the [configuration template](backend/.env.example) for required TLS encryption and [account deployment notes](backend/ACCOUNTS.md#manual-migration-procedure) for database access requirements |
 | SIP_CORS_ALLOWED_ORIGINS | Backend | Optional comma-separated exact frontend origins for `/api/**`; disabled by default |
 | DEV_API_TARGET | Vite config process | Optional dev proxy destination; export before starting Vite |
 
@@ -83,7 +83,7 @@ export SIP_DB_USERNAME='YOUR_DEV_DATABASE_USER'
 export SIP_DB_PASSWORD='YOUR_DEV_DATABASE_PASSWORD'
 ```
 
-Then run the backend. `verify-full` verifies certificates/hostname and may require the provider's CA certificate/driver trust setup. Schema initialization is disabled (`spring.sql.init.mode=never`); no migrations or entities exist. Starting the scaffold does not prove connectivity because the datasource can initialize lazily. Live connectivity **has not been verified**; resolve project provisioning, TLS trust, least-privilege roles and access policy before integration. Basic builds/tests require no Supabase account or environment files.
+Then run the backend. `verify-full` verifies certificates/hostname and may require the provider's CA certificate/driver trust setup. Schema initialization is disabled (`spring.sql.init.mode=never`, `spring.jpa.hibernate.ddl-auto=none`). The account entity and manually applied migration are described in [account persistence](backend/ACCOUNTS.md). Starting the backend does not prove connectivity or schema readiness because database access initializes lazily. The project owner reports successful deployed connectivity; no live connection is attempted by the account work. Basic builds/tests require no Supabase account or environment files.
 
 ## Verify changes
 
@@ -107,6 +107,11 @@ Backend, from `backend/`:
 ```
 
 This compiles, runs the real HTTP health smoke test without database credentials, checks Java formatting and builds the executable JAR. Use `./mvnw spotless:apply` to format and `./mvnw test` for tests alone. Windows: substitute `mvnw.cmd`.
+
+With Docker running, `./mvnw -Ppostgres-it verify` additionally runs the 10 isolated PostgreSQL
+integration tests. Local verification on October 30, 2026 passed all 70 backend tests with no
+failures, errors, or skips. These tests use a disposable container, never live Supabase. See
+[account verification details](backend/ACCOUNTS.md#verified-results).
 
 Repository root:
 
