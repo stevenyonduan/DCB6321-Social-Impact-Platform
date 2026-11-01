@@ -73,6 +73,21 @@ class HttpSupabaseAuthClientTest {
                             .isEqualTo("sb_publishable_test");
                     respond(exchange, userStatus, userBody);
                 });
+        server.createContext(
+                "/auth/v1/token",
+                exchange -> {
+                    signups.incrementAndGet();
+                    requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
+                    assertThat(exchange.getRequestURI().getRawQuery())
+                            .isEqualTo("grant_type=password");
+                    assertThat(exchange.getRequestHeaders().getFirst("apikey"))
+                            .isEqualTo("sb_publishable_test");
+                    assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+                    var body = json.readTree(exchange.getRequestBody().readAllBytes());
+                    assertThat(body.propertyNames()).containsExactlyInAnyOrder("email", "password");
+                    assertThat(body.path("password").asString()).isEqualTo(PASSWORD);
+                    respond(exchange, signupStatus, signupBody);
+                });
         server.start();
         http =
                 HttpClient.newBuilder()
@@ -278,6 +293,178 @@ class HttpSupabaseAuthClientTest {
             assertThat(signups.get()).isEqualTo(1);
             assertThat(lookups.get()).isZero();
         }
+    }
+
+    private SupabaseAuthClient.VerifiedLogin login() {
+        return client(Duration.ofSeconds(2)).login(new LoginRequest(EMAIL, PASSWORD));
+    }
+
+    @Test
+    void loginUsesPasswordGrantAndTrustedUserLookup() {
+        var result = login();
+        assertThat(result.id()).isEqualTo(ID);
+        assertThat(result.email()).isEqualTo(EMAIL);
+        assertThat(result.session().refreshToken()).isEqualTo("refresh-never-log");
+        assertThat(requests)
+                .containsExactly("POST /auth/v1/token?grant_type=password", "GET /auth/v1/user");
+        assertThat(result.toString()).doesNotContain("access-never-log", "refresh-never-log");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "400,invalid_credentials,401",
+        "401,invalid_credentials,401",
+        "422,invalid_credentials,401",
+        "400,email_not_confirmed,401",
+        "400,user_banned,401",
+        "401,bad_key,502",
+        "400,captcha_failed,502",
+        "429,anything,429",
+        "503,anything,503"
+    })
+    void loginProviderErrorsAreSanitized(int upstream, String code, int expected) {
+        signupStatus = upstream;
+        signupBody =
+                json.writeValueAsString(
+                        Map.of("code", code, "msg", PASSWORD + " access-never-log"));
+        assertThatThrownBy(this::login)
+                .isInstanceOf(LoginFailure.class)
+                .hasNoCause()
+                .hasMessageNotContaining(PASSWORD)
+                .hasMessageNotContaining("access-never-log")
+                .extracting("status")
+                .isEqualTo(expected);
+        assertThat(signups.get()).isEqualTo(1);
+        assertThat(lookups.get()).isZero();
+    }
+
+    @Test
+    void wrongPasswordAndUnknownEmailHaveIdenticalErrors() {
+        signupStatus = 400;
+        signupBody = "{\"code\":\"invalid_credentials\"}";
+        for (String email : List.of(EMAIL, "unknown@example.test")) {
+            assertThatThrownBy(
+                            () ->
+                                    client(Duration.ofSeconds(2))
+                                            .login(new LoginRequest(email, PASSWORD)))
+                    .isInstanceOf(LoginFailure.class)
+                    .hasMessage("Invalid email or password.")
+                    .extracting("code")
+                    .isEqualTo("INVALID_CREDENTIALS");
+        }
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "access_token",
+                "refresh_token",
+                "token_type",
+                "expires_in",
+                "expires_at",
+                "user"
+            })
+    void loginRejectsIncompleteSession(String field) {
+        ObjectNode body = (ObjectNode) json.valueToTree(sessionBody());
+        body.remove(field);
+        signupBody = body.toString();
+        invalidLogin();
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not json", "[]", "null", "{}"})
+    void loginRejectsMalformedResponse(String body) {
+        signupBody = body;
+        invalidLogin();
+    }
+
+    @Test
+    void loginRejectsUntrustedIdentitiesAndTokens() {
+        for (Map<String, Object> body :
+                List.<Map<String, Object>>of(
+                        Map.of("id", "01234567-89ab-4cde-8fab-0123456789ab", "email", EMAIL),
+                        Map.of("id", ID, "email", "other@example.test"),
+                        Map.of("id", ID, "email", EMAIL, "is_anonymous", true))) {
+            userBody = json.writeValueAsString(body);
+            invalidLogin();
+        }
+        userStatus = 401;
+        userBody = "{\"code\":\"invalid_credentials\"}";
+        invalidLogin();
+    }
+
+    @Test
+    void loginBoundsBodiesRejectsRedirectsAndValidatesSession() {
+        for (Map.Entry<String, Object> invalid :
+                Map.<String, Object>of(
+                                "access_token",
+                                "bad\r\nheader",
+                                "refresh_token",
+                                " ",
+                                "token_type",
+                                "cookie",
+                                "expires_in",
+                                -1,
+                                "expires_at",
+                                1)
+                        .entrySet()) {
+            ObjectNode body = (ObjectNode) json.valueToTree(sessionBody());
+            body.set(invalid.getKey(), json.valueToTree(invalid.getValue()));
+            signupBody = body.toString();
+            invalidLogin();
+        }
+        signupBody = "x".repeat(65537);
+        invalidLogin();
+        contentType = "text/html";
+        invalidLogin();
+        contentType = "application/json";
+        signupStatus = 302;
+        invalidLogin();
+        assertThat(lookups.get()).isZero();
+    }
+
+    @Test
+    void loginNetworkFailureAndBodyTimeoutAreUnavailable() throws Exception {
+        server.removeContext("/auth/v1/token");
+        server.createContext(
+                "/auth/v1/token",
+                exchange -> {
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, 0);
+                    exchange.getResponseBody().write('{');
+                    exchange.getResponseBody().flush();
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                    }
+                    exchange.close();
+                });
+        assertThatThrownBy(
+                        () ->
+                                client(Duration.ofMillis(100))
+                                        .login(new LoginRequest(EMAIL, PASSWORD)))
+                .isInstanceOf(LoginFailure.class)
+                .hasNoCause()
+                .extracting("status")
+                .isEqualTo(503);
+        server.stop(0);
+        assertThatThrownBy(this::login)
+                .isInstanceOf(LoginFailure.class)
+                .hasNoCause()
+                .extracting("code")
+                .isEqualTo("AUTH_UNAVAILABLE");
+        assertThat(lookups.get()).isZero();
+    }
+
+    private void invalidLogin() {
+        assertThatThrownBy(this::login)
+                .isInstanceOf(LoginFailure.class)
+                .hasNoCause()
+                .extracting("code")
+                .isEqualTo("AUTH_RESPONSE_INVALID");
     }
 
     private void invalidResponse() {

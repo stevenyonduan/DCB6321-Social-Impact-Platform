@@ -5,6 +5,16 @@ import java.util.UUID;
 public interface SupabaseAuthClient {
     VerifiedSignup signup(SignupRequest request);
 
+    VerifiedLogin login(LoginRequest request);
+
+    /** Constructed only after authenticated user lookup verifies the session identity. */
+    record VerifiedLogin(UUID id, String email, Session session) {
+        @Override
+        public String toString() {
+            return "VerifiedLogin[redacted]";
+        }
+    }
+
     record Session(
             String accessToken,
             String refreshToken,

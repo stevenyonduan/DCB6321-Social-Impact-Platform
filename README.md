@@ -2,7 +2,7 @@
 
 Georgia Tech DCB6321 Senior Design project for client Tracy Dansby. SIP connects college students and young adults in Atlanta with nonprofits and volunteer opportunities, combining discovery with a volunteering community.
 
-This repository prepares Development Readiness Sections 1–3 and includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. Latest backend verification passed all 160 tests, including 15 isolated PostgreSQL integration tests; see [signup verification](backend/SIGNUP.md#verification). The subsequently approved backend [single-step signup endpoint](backend/SIGNUP.md) now integrates Supabase Auth and account persistence when explicitly enabled. Login, profile APIs, and real frontend authentication remain outside this ticket. Section 4 belongs to another teammate.
+This repository prepares Development Readiness Sections 1–3 and includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. Latest backend verification passed all 214 tests, including 17 isolated PostgreSQL integration tests; see [login verification](backend/LOGIN.md#verification-record). The subsequently approved backend [single-step signup endpoint](backend/SIGNUP.md) now integrates Supabase Auth and account persistence when explicitly enabled. The subsequently approved [login endpoint](backend/LOGIN.md) authenticates existing accounts without provisioning. Profile APIs and real frontend authentication remain outside this ticket. Section 4 belongs to another teammate.
 
 ## Approved stack and repository
 
@@ -59,7 +59,7 @@ Expected: `{"status":"UP"}`. This endpoint checks application availability only.
 
 ## Environment and development database
 
-Copy templates only to ignored local files. Spring Boot **does not automatically read `.env` files**: configure exported variables or your IDE run environment. Vite loads `frontend/.env.local`; VITE_* values are public and frozen into the build. Backend signup uses the Supabase URL/publishable key only when explicitly enabled; see [signup setup](backend/SIGNUP.md). Frontend Auth placeholders remain unused by the demo. Never put a Supabase secret/service-role key or database password in VITE_*.
+Copy templates only to ignored local files. Spring Boot **does not automatically read `.env` files**: configure exported variables or your IDE run environment. Vite loads `frontend/.env.local`; VITE_* values are public and frozen into the build. Backend signup/login uses the Supabase URL/publishable key only when explicitly enabled; see [signup setup](backend/SIGNUP.md). Frontend Auth placeholders remain unused by the demo. Never put a Supabase secret/service-role key or database password in VITE_*.
 
 | Variable | Consumer | Meaning |
 | --- | --- | --- |
@@ -69,8 +69,8 @@ Copy templates only to ignored local files. Spring Boot **does not automatically
 | SERVER_ADDRESS / SERVER_PORT | Spring | Local defaults 127.0.0.1 / 8080; `PORT` takes precedence over SERVER_PORT |
 | SIP_DB_URL | Spring database profile | Development-only JDBC PostgreSQL URL with TLS |
 | SIP_DB_USERNAME / SIP_DB_PASSWORD | Spring database profile | Development database credentials |
-| SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY | Backend signup | HTTPS project origin and modern publishable key; see [signup setup](backend/SIGNUP.md) |
-| SIP_AUTH_ENABLED | Backend signup | `false` by default; `true` enables signup with a database-capable profile |
+| SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY | Backend signup/login | HTTPS project origin and modern publishable key; see [signup setup](backend/SIGNUP.md) |
+| SIP_AUTH_ENABLED | Backend signup/login | `false` by default; `true` enables signup/login with a database-capable profile |
 | SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD | Backend prod profile | Standard Render database settings; see the [configuration template](backend/.env.example) for required TLS encryption and [account deployment notes](backend/ACCOUNTS.md#manual-migration-procedure) for database access requirements |
 | SIP_CORS_ALLOWED_ORIGINS | Backend | Optional comma-separated exact frontend origins for `/api/**`; disabled by default |
 | DEV_API_TARGET | Vite config process | Optional dev proxy destination; export before starting Vite |

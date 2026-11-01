@@ -62,6 +62,35 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
                                                 json.writeValueAsString(body)))
                                 .build(),
                         true);
+        return verifySession(signup);
+    }
+
+    @Override
+    public VerifiedLogin login(LoginRequest request) {
+        try {
+            JsonNode session =
+                    exchange(
+                            builder("/auth/v1/token?grant_type=password")
+                                    .header("Content-Type", "application/json")
+                                    .POST(
+                                            HttpRequest.BodyPublishers.ofString(
+                                                    json.writeValueAsString(
+                                                            Map.of(
+                                                                    "email",
+                                                                    request.email(),
+                                                                    "password",
+                                                                    request.password()))))
+                                    .build(),
+                            false,
+                            true);
+            var verified = verifySession(session);
+            return new VerifiedLogin(verified.id(), verified.email(), verified.session());
+        } catch (SignupFailure failure) {
+            throw LoginFailure.fromAuth(failure);
+        }
+    }
+
+    private VerifiedSignup verifySession(JsonNode signup) {
         JsonNode user = signup.path("user");
         UUID id = identityId(user);
         String email = identityEmail(user);
@@ -99,6 +128,10 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
     }
 
     private JsonNode exchange(HttpRequest request, boolean signup) {
+        return exchange(request, signup, false);
+    }
+
+    private JsonNode exchange(HttpRequest request, boolean signup, boolean login) {
         var pending = http.sendAsync(request, info -> new LimitedBodySubscriber());
         try {
             // Includes the entire response body, even if the peer sends headers then stalls.
@@ -125,6 +158,12 @@ public final class HttpSupabaseAuthClient implements SupabaseAuthClient {
             }
             if (status < 200 || status >= 300) {
                 String code = node.path("code").asString("");
+                if (login
+                        && (status == 400 || status == 401 || status == 422)
+                        && Set.of("invalid_credentials", "email_not_confirmed", "user_banned")
+                                .contains(code)) {
+                    throw LoginFailure.credentials();
+                }
                 if (signup && (status == 400 || status == 422)) {
                     if (Set.of("user_already_exists", "email_exists").contains(code)) {
                         throw SignupFailure.conflict();
