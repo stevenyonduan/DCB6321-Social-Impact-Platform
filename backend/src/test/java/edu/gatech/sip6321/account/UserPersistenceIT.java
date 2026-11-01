@@ -8,6 +8,8 @@ import edu.gatech.sip6321.auth.SignupFailure;
 import edu.gatech.sip6321.auth.SignupRequest;
 import edu.gatech.sip6321.auth.SignupService;
 import edu.gatech.sip6321.auth.SupabaseAuthClient;
+import edu.gatech.sip6321.diagnostics.DatabaseDiagnostics;
+import edu.gatech.sip6321.diagnostics.DiagnosticHikariDataSource;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -16,8 +18,11 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +39,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * Explicit opt-in: ./mvnw -Ppostgres-it verify. Requires Docker; never uses external credentials.
  */
 @Testcontainers
+@ExtendWith(OutputCaptureExtension.class)
 @ActiveProfiles("database")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class UserPersistenceIT {
@@ -413,5 +419,42 @@ class UserPersistenceIT {
         jdbc.execute("DROP TRIGGER signup_failure ON public.users");
         jdbc.execute("DROP FUNCTION public.signup_failure_fixture()");
         jdbc.execute("DROP SEQUENCE public.signup_attempt_seq");
+    }
+
+    @Test
+    void diagnosticPoolReportsRealConnectionAcquisitionWithoutLoggingConnectionDetails(
+            CapturedOutput output) {
+        try (var pool = new DiagnosticHikariDataSource()) {
+            pool.setJdbcUrl(POSTGRES.getJdbcUrl());
+            pool.setUsername(POSTGRES.getUsername());
+            pool.setPassword(POSTGRES.getPassword());
+            pool.setMaximumPoolSize(1);
+            pool.setMinimumIdle(0);
+            Boolean valid =
+                    DatabaseDiagnostics.signup(
+                            () ->
+                                    DatabaseDiagnostics.operation(
+                                            DatabaseDiagnostics.Operation.ACCOUNT_LOOKUP,
+                                            1,
+                                            () -> {
+                                                try (var connection = pool.getConnection()) {
+                                                    return connection.isValid(5);
+                                                } catch (java.sql.SQLException exception) {
+                                                    throw new IllegalStateException(
+                                                            "Isolated test connection failed");
+                                                }
+                                            }));
+            assertThat(valid).isTrue();
+        }
+        String diagnostics =
+                output.getAll()
+                        .lines()
+                        .filter(line -> line.contains("db.diagnostic"))
+                        .collect(java.util.stream.Collectors.joining("\n"));
+        assertThat(diagnostics)
+                .contains(
+                        "operation=connection.acquire parentOperation=account.lookup attempt=1 event=success connectionAcquired=true",
+                        "operation=account.lookup parentOperation=none attempt=1 event=success connectionAcquired=true")
+                .doesNotContain(POSTGRES.getJdbcUrl(), "jdbc:postgresql:", id.toString(), EMAIL);
     }
 }

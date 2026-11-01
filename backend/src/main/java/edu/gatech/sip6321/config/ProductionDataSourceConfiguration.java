@@ -1,6 +1,7 @@
 package edu.gatech.sip6321.config;
 
 import com.zaxxer.hikari.HikariDataSource;
+import edu.gatech.sip6321.diagnostics.DiagnosticHikariDataSource;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -28,7 +29,7 @@ public class ProductionDataSourceConfiguration {
         }
         String url = required(environment, "spring.datasource.url");
         validateTlsUrl(url);
-        var datasource = new HikariDataSource();
+        var datasource = new DiagnosticHikariDataSource();
         datasource.setJdbcUrl(url);
         datasource.setUsername(required(environment, "spring.datasource.username"));
         datasource.setPassword(required(environment, "spring.datasource.password"));

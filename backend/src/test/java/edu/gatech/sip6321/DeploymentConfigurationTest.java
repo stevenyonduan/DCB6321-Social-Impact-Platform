@@ -98,11 +98,23 @@ class DeploymentConfigurationTest {
                                     .hasSingleBean(UserRepository.class)
                                     .hasSingleBean(UserService.class);
                             var datasource = context.getBean(HikariDataSource.class);
+                            assertThat(datasource)
+                                    .isInstanceOf(
+                                            edu.gatech.sip6321.diagnostics
+                                                    .DiagnosticHikariDataSource.class);
                             assertThat(datasource.getJdbcUrl()).isEqualTo(ENCRYPTED_URL);
                             assertThat(datasource.getUsername()).isEqualTo("test-user");
                             assertThat(datasource.getPassword()).isEqualTo("test-password");
                             assertThat(datasource.getMaximumPoolSize()).isEqualTo(3);
                             assertThat(datasource.getMinimumIdle()).isZero();
+                            assertThat(datasource.getConnectionTimeout()).isEqualTo(10000);
+                            assertThat(datasource.getValidationTimeout()).isEqualTo(5000);
+                            assertThat(datasource.getInitializationFailTimeout()).isEqualTo(1);
+                            assertThat(
+                                            datasource
+                                                    .getDataSourceProperties()
+                                                    .getProperty("connectTimeout"))
+                                    .isEqualTo("10");
                             assertThat(datasource.getHikariPoolMXBean()).isNull();
                         });
     }
