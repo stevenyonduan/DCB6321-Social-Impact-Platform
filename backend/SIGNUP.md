@@ -4,8 +4,9 @@ This ticket implements only `POST /api/auth/signup`. The project owner approved 
 signup with **Confirm email disabled**, JSON session delivery after application persistence, and
 operator-assisted reconciliation after persistent partial failures. This supersedes the earlier
 verification/completion-endpoint proposal and the broader authentication UI plan for this ticket.
-No login, profile, refresh, confirmation callback, completion endpoint, or frontend integration is
-implemented. No schema migration is needed; preserve the already-applied V001.
+Login was subsequently implemented in a separate ticket; see [login](LOGIN.md). No profile,
+refresh, confirmation callback, completion endpoint, or frontend integration is implemented.
+No schema migration is needed; preserve the already-applied V001.
 
 ## Contract
 
@@ -120,7 +121,8 @@ After persistent failure, retain the Auth identity, return no session, and requi
 A second HTTP signup request can be rejected as a duplicate and **cannot** authorize reconciliation.
 Never recreate or delete identities automatically. A timeout during signup/user lookup can also
 leave an Auth-only identity. A response lost after commit can leave both records created but the
-client without its session. Future login may recover session access; no login fallback exists here.
+client without its session. The separate [login endpoint](LOGIN.md) can restore session access
+when the application account exists; signup has no automatic login fallback.
 
 ### Operator-assisted reconciliation runbook
 

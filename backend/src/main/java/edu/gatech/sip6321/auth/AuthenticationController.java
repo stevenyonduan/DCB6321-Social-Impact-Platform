@@ -13,8 +13,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthenticationController {
     private final SignupService signup;
 
-    public AuthenticationController(SignupService signup) {
+    private final LoginService login;
+
+    public AuthenticationController(SignupService signup, LoginService login) {
         this.signup = signup;
+        this.login = login;
+    }
+
+    @PostMapping(
+            path = "/api/auth/login",
+            consumes = "application/json",
+            produces = "application/json")
+    public ResponseEntity<SignupResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(login.login(request));
     }
 
     @PostMapping(

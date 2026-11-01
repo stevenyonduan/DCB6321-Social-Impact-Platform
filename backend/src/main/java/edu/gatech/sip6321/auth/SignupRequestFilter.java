@@ -22,7 +22,9 @@ public class SignupRequestFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().equals(request.getContextPath() + "/api/auth/signup");
+        String path = request.getRequestURI();
+        return !path.equals(request.getContextPath() + "/api/auth/signup")
+                && !path.equals(request.getContextPath() + "/api/auth/login");
     }
 
     @Override
@@ -36,7 +38,13 @@ public class SignupRequestFilter extends OncePerRequestFilter {
         }
         if (!"POST".equals(request.getMethod())) {
             response.setHeader("Allow", "POST, OPTIONS");
-            error(response, 405, "METHOD_NOT_ALLOWED", "Use POST for signup.");
+            error(
+                    response,
+                    405,
+                    "METHOD_NOT_ALLOWED",
+                    request.getRequestURI().endsWith("/login")
+                            ? "Use POST for login."
+                            : "Use POST for signup.");
             return;
         }
         try {
@@ -50,12 +58,12 @@ public class SignupRequestFilter extends OncePerRequestFilter {
             return;
         }
         if (request.getContentLengthLong() > LIMIT) {
-            tooLarge(response);
+            tooLarge(request, response);
             return;
         }
         byte[] body = request.getInputStream().readNBytes(LIMIT + 1);
         if (body.length > LIMIT) {
-            tooLarge(response);
+            tooLarge(request, response);
             return;
         }
         var input = new ByteArrayInputStream(body);
@@ -89,8 +97,15 @@ public class SignupRequestFilter extends OncePerRequestFilter {
                 response);
     }
 
-    private void tooLarge(HttpServletResponse response) throws IOException {
-        error(response, 413, "REQUEST_TOO_LARGE", "Signup request is too large.");
+    private void tooLarge(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        error(
+                response,
+                413,
+                "REQUEST_TOO_LARGE",
+                request.getRequestURI().endsWith("/login")
+                        ? "Login request is too large."
+                        : "Signup request is too large.");
     }
 
     private void error(HttpServletResponse response, int status, String code, String message)

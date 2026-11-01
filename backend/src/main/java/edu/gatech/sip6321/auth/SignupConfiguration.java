@@ -58,6 +58,11 @@ public class SignupConfiguration {
         return new SignupService(auth, users);
     }
 
+    @Bean
+    LoginService loginService(SupabaseAuthClient auth, UserService users) {
+        return new LoginService(auth, users);
+    }
+
     private Duration timeout(Environment env, String name, int fallback) {
         try {
             int milliseconds = Integer.parseInt(env.getProperty(name, Integer.toString(fallback)));

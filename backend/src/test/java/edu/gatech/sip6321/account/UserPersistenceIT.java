@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import edu.gatech.sip6321.auth.LoginFailure;
+import edu.gatech.sip6321.auth.LoginRequest;
+import edu.gatech.sip6321.auth.LoginService;
 import edu.gatech.sip6321.auth.SignupFailure;
 import edu.gatech.sip6321.auth.SignupRequest;
 import edu.gatech.sip6321.auth.SignupService;
@@ -76,6 +79,32 @@ class UserPersistenceIT {
         jdbc.update("DELETE FROM auth.users");
         id = UUID.randomUUID();
         authIdentity(id);
+    }
+
+    @Test
+    void loginReadsExistingAccountWithoutChangingAnyColumnsAndNeverProvisionsMissingAccount() {
+        service.createStandardAccount(id, EMAIL, "First", "Last");
+        var before = jdbc.queryForList("SELECT * FROM public.users");
+        SupabaseAuthClient auth = mock(SupabaseAuthClient.class);
+        var request = new LoginRequest(EMAIL, "password-never-log");
+        var session =
+                new SupabaseAuthClient.Session(
+                        "access-never-log",
+                        "refresh-never-log",
+                        "bearer",
+                        3600,
+                        Instant.now().getEpochSecond() + 3600);
+        when(auth.login(request))
+                .thenReturn(new SupabaseAuthClient.VerifiedLogin(id, EMAIL, session));
+        var login = new LoginService(auth, service);
+        assertThat(login.login(request).user().id()).isEqualTo(id);
+        assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(before);
+        jdbc.update("DELETE FROM public.users");
+        assertThatThrownBy(() -> login.login(request))
+                .isInstanceOf(LoginFailure.class)
+                .extracting("code")
+                .isEqualTo("ACCOUNT_PROVISIONING_REQUIRED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM public.users", Long.class)).isZero();
     }
 
     @Test

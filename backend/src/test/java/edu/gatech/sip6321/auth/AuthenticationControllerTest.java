@@ -29,6 +29,7 @@ class AuthenticationControllerTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @MockitoBean SignupService service;
+    @MockitoBean LoginService loginService;
 
     private Map<String, Object> valid() {
         return new HashMap<>(

@@ -1,13 +1,15 @@
 # API and interfaces — Detailed Design Document requirements
 
-## Subsequently approved signup contract
+## Subsequently approved authentication contracts
 
 The project owner approved and authorized `POST /api/auth/signup` with email confirmation disabled,
 STANDARD-only account creation, server-side validation of the returned Supabase identity, and
 allowlisted JSON session delivery after application persistence. The exact contract, errors,
 configuration, and recovery limitations are in [backend/SIGNUP.md](../backend/SIGNUP.md).
-No login, profile, or confirmation/completion endpoint is included. The DDD transcription below
-remains source history; its unspecified endpoint details are resolved only for this signup ticket.
+The subsequently approved `POST /api/auth/login` contract is documented in
+[backend/LOGIN.md](../backend/LOGIN.md). No profile or confirmation/completion endpoint is included.
+The DDD transcription below remains source history; endpoint details are resolved only for the
+authorized signup and login tickets.
 
 Source: [Detailed Design Document](../Detailed%20Design%20Doc.pdf) (DDD), pp. 5–9 and 12–19. This document records the interface requirements established by the DDD. The DDD does not define individual endpoint paths, HTTP methods, request/response schemas or error contracts; those details remain unspecified rather than being supplied as proposed contracts here.
 

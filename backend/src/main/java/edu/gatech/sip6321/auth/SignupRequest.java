@@ -36,7 +36,7 @@ public record SignupRequest(
         return new SignupRequest(email, node.path("password").asString(), first, last);
     }
 
-    private static boolean validUnicode(String value) {
+    static boolean validUnicode(String value) {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c == 0 || Character.isLowSurrogate(c)) {
