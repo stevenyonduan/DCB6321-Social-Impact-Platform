@@ -1,5 +1,9 @@
 # Account persistence
 
+The subsequently approved [signup ticket](SIGNUP.md) now calls this internal service after
+authenticated Supabase identity validation, with email confirmation disabled. The original
+persistence scope and deployment history below remain unchanged; V001 must not be edited/rerun.
+
 This ticket adds an internal JPA account persistence layer, not signup, login, JWT verification,
 profile endpoints, or frontend integration. Supabase owns authentication and passwords.
 

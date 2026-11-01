@@ -1,5 +1,16 @@
 # Security and privacy
 
+## Approved signup decision
+
+The project owner subsequently approved a single-step backend signup with Supabase email
+confirmation disabled. Signup validates the returned bearer session through Supabase's authenticated
+user API before creating a STANDARD account, then returns an allowlisted session only after the
+application transaction commits. It does not prove email ownership. Persistent partial failures
+require operator reconciliation; Auth identities are never deleted as compensation. See the
+[signup security, setup, and recovery contract](../backend/SIGNUP.md). This supersedes earlier
+verification/completion proposals for signup only. General protected-route JWT/authorization design
+below remains separate; this ticket adds no general authentication filter or frontend integration.
+
 Authority: DDD pp. 7 and 19, the approved roles/schema on pp. 12–18, and the user's explicit password correction. Detailed policies below marked **PROPOSED** need team review; the starter implements no authentication or permission system.
 
 ## Authentication and password correction
