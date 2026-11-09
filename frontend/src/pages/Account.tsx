@@ -1,26 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { PageLink } from '../components/PageLink';
+import type { Credentials, Signup } from '../api/auth';
 
 export function Account({
   mode,
   onEnter,
 }: {
   mode: 'login' | 'signup';
-  onEnter: (name: string) => void;
+  onEnter: (input: Credentials | Signup, signal: AbortSignal) => Promise<void>;
 }) {
   const signup = mode === 'signup';
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+  const active = useRef<AbortController | null>(null);
+  useEffect(() => () => active.current?.abort(), []);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (active.current) return;
     const form = event.currentTarget;
     const fields = new FormData(form);
-    const first = String(fields.get('firstName') ?? '').trim();
-    const last = String(fields.get('lastName') ?? '').trim();
-    if (signup && (!first || !last)) {
+    const first = String(fields.get('firstName') ?? '');
+    const last = String(fields.get('lastName') ?? '');
+    if (signup && (!first.trim() || !last.trim())) {
       setError('Please enter your first and last name.');
       return;
     }
@@ -28,9 +33,38 @@ export function Account({
       setError('Please enter your password.');
       return;
     }
-    // Credentials never leave this form or enter session storage.
-    form.reset();
-    onEnter(signup ? first : 'Alex');
+    const controller = new AbortController();
+    active.current = controller;
+    setPending(true);
+    setError('');
+    try {
+      const credentials = {
+        email: String(fields.get('email') ?? ''),
+        password: String(fields.get('password') ?? ''),
+      };
+      await onEnter(
+        signup
+          ? { ...credentials, firstName: first, lastName: last }
+          : credentials,
+        controller.signal,
+      );
+      if (!controller.signal.aborted) form.reset();
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : 'Sign-in could not be completed. Please try again.',
+        );
+        const password = form.elements.namedItem('password');
+        if (password instanceof HTMLInputElement) password.value = '';
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        active.current = null;
+        setPending(false);
+      }
+    }
   }
 
   return (
@@ -50,7 +84,7 @@ export function Account({
             ? 'Join a community that turns caring into action.'
             : 'Your next good thing is waiting.'}
         </p>
-        <form onSubmit={submit} autoComplete="off">
+        <form onSubmit={submit} aria-busy={pending}>
           {signup && (
             <div className="name-fields">
               <label htmlFor="first-name">
@@ -61,6 +95,8 @@ export function Account({
                   placeholder="Alex"
                   required
                   maxLength={100}
+                  autoComplete="given-name"
+                  disabled={pending}
                 />
               </label>
               <label htmlFor="last-name">
@@ -71,6 +107,8 @@ export function Account({
                   placeholder="Morgan"
                   required
                   maxLength={100}
+                  autoComplete="family-name"
+                  disabled={pending}
                 />
               </label>
             </div>
@@ -84,6 +122,8 @@ export function Account({
               placeholder="you@example.com"
               required
               maxLength={255}
+              autoComplete="username"
+              disabled={pending}
             />
           </label>
           <label htmlFor="password">Password</label>
@@ -94,7 +134,9 @@ export function Account({
               type={showPassword ? 'text' : 'password'}
               placeholder="Enter your password"
               required
-              autoComplete="new-password"
+              maxLength={1024}
+              autoComplete={signup ? 'new-password' : 'current-password'}
+              disabled={pending}
             />
             <button
               type="button"
@@ -114,8 +156,18 @@ export function Account({
               {error}
             </p>
           )}
-          <button className="button primary submit-button" type="submit">
-            {signup ? 'Create account' : 'Log in'}
+          <button
+            className="button primary submit-button"
+            type="submit"
+            disabled={pending}
+          >
+            {pending
+              ? signup
+                ? 'Creating account…'
+                : 'Logging in…'
+              : signup
+                ? 'Create account'
+                : 'Log in'}
             <ArrowRight aria-hidden="true" />
           </button>
         </form>

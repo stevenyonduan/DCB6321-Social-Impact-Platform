@@ -265,6 +265,55 @@ class HttpSupabaseAuthClientTest {
     }
 
     @ParameterizedTest
+    @CsvSource({
+        "400,user_already_exists,409",
+        "422,email_exists,409",
+        "422,weak_password,400",
+        "400,email_address_invalid,400",
+        "400,validation_failed,400",
+        "400,captcha_failed,502"
+    })
+    void unversionedSignupErrorsUseSymbolicErrorCode(int upstream, String code, int expected) {
+        signupStatus = upstream;
+        signupBody =
+                json.writeValueAsString(
+                        Map.of(
+                                "code",
+                                upstream,
+                                "error_code",
+                                code,
+                                "msg",
+                                PASSWORD + " access-never-log"));
+        assertThatThrownBy(() -> client(Duration.ofSeconds(2)).signup(REQUEST))
+                .isInstanceOf(SignupFailure.class)
+                .hasNoCause()
+                .hasMessageNotContaining(PASSWORD)
+                .hasMessageNotContaining("access-never-log")
+                .extracting("status")
+                .isEqualTo(expected);
+        assertThat(signups.get()).isEqualTo(1);
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"code\":\"email_exists\",\"error_code\":null}",
+                "{\"code\":\"weak_password\",\"error_code\":400}",
+                "{\"code\":\"email_exists\",\"error_code\":[\"email_exists\"]}",
+                "{\"code\":\"email_exists\",\"error_code\":\"captcha_failed\"}"
+            })
+    void invalidOrUnknownSignupErrorCodeCannotFallBackToRecognizedCode(String body) {
+        signupStatus = 400;
+        signupBody = body;
+        assertThatThrownBy(() -> client(Duration.ofSeconds(2)).signup(REQUEST))
+                .isInstanceOf(SignupFailure.class)
+                .extracting("status")
+                .isEqualTo(502);
+        assertThat(lookups.get()).isZero();
+    }
+
+    @ParameterizedTest
     @ValueSource(
             strings = {
                 "access_token",
