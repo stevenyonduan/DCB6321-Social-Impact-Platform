@@ -74,6 +74,10 @@ tokens, raw provider messages, or exception chains. Signup responses, including 
 | 500 | INTERNAL_ERROR | Sanitized unexpected failure |
 
 Recognized duplicate provider codes are `user_already_exists` and `email_exists` on 400/422.
+Signup accepts symbolic `code` responses and unversioned numeric `code` plus symbolic
+`error_code` responses. A present `error_code` takes precedence, including when malformed;
+unknown codes remain sanitized upstream failures. This prevents duplicate-email and
+recognized input rejections from incorrectly becoming HTTP 502.
 A generic 409 still discloses that registration cannot proceed; this is the approved enumeration
 tradeoff. There is no public email lookup or duplicate-to-login fallback.
 
@@ -347,3 +351,18 @@ questions remain outside scope. See [account persistence](ACCOUNTS.md), [API](..
 Provider references: [Auth REST specification](https://github.com/supabase/auth/blob/master/openapi.yaml),
 [authenticated user lookup](https://supabase.com/docs/reference/javascript/auth-getuser), and
 [password policy](https://supabase.com/docs/guides/auth/password-security).
+
+### Signup error-format regression fix — November 5, 2026
+
+A read-only Auth settings check confirmed signup is enabled and email auto-confirm is true.
+A deliberately incomplete Auth signup request (no email/password, no identity created)
+confirmed the project returns numeric `code` plus symbolic `error_code`. Local stub tests
+reproduced recognized signup errors becoming HTTP 502 before the fix. Signup now uses
+the same precedence rule as login. Ten new cases cover duplicate/input rejection and
+malformed/conflicting symbolic fields; no provider message or token is exposed.
+
+`./mvnw spotless:apply verify` with Java 21 passed 261 ordinary tests, formatting, and
+JAR packaging. No full live account signup was performed for this fix, and no schema,
+Auth setting, account, deployment, commit, or push was changed. The optional PostgreSQL
+integration suite was not requested. This fixes error classification; successful live
+signup/session delivery still requires verification with an authorized test account.

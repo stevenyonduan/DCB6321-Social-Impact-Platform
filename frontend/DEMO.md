@@ -1,21 +1,76 @@
-# SOW local client demo
+# SOW frontend: authentication and content previews
 
-From `frontend/`, use Node 24, run `npm ci` once, then `npm run dev`. Open <http://127.0.0.1:5173>. No backend, Supabase project, credentials, or environment file is needed. After installation, the app's images, fonts, and icons work offline.
+Use Node 24. From `frontend/`, run `npm ci`, then `npm run dev` and open
+<http://127.0.0.1:5173>. Local images, fonts, and icons remain bundled.
 
-## Walkthrough
+## Development setup
 
-1. Start at `/` for the approved landing page. The background photo is anchored left; on narrow screens it appears below the text without cropping.
-2. Choose **Join SOW** for `/signup`, or **Log in** for `/login`. Both use the same centered account layout. The SOW logo always links to the landing page.
-3. Use made-up details (for example `alex@example.com` and any nonempty demo password). Sign-up also requires first and last names. Submitting opens `/home`.
-4. The homepage shows community posts on the left and opportunities on the right. On narrow screens the opportunities follow the posts. Likes and saves are temporary UI state; posting, commenting, and event actions explain their preview status.
-5. Refresh preserves the demo session in the same tab. **Log out** clears it and returns to the landing page. Visiting `/home` without a demo session redirects to `/login`. Browser back/forward and direct account URLs are supported by the Vite SPA fallback.
+Copy `.env.example` to `.env.local` (ignored by Git) and set the development Supabase
+project URL and publishable key used by the backend. These are public browser settings.
+Never copy backend database credentials or service-role keys into frontend configuration.
+Restart Vite after editing settings.
 
-## Integration boundary
+Run the backend with Java 21, the database profile, Auth enabled, and authorized development
+settings as described in [backend signup setup](../backend/SIGNUP.md). Its existing users
+migration must already be applied. Vite proxies `/api` to `http://127.0.0.1:8080`;
+exported `DEV_API_TARGET` can change that destination. For a deployed API, set
+`VITE_API_BASE_URL` to its full API prefix and configure backend exact-origin CORS.
+`npm run preview` does not provide the Vite development proxy.
 
-This is explicitly a frontend presentation, not real registration, authentication, authorization, or persistence. It sends no credentials and makes no API requests. Only a demo display name is kept in `sessionStorage` under `sow-demo-session`; no email, password, role, or token is stored. If browser storage is disabled, the current walkthrough works in memory and refresh returns to login.
+Without service configuration you can view the landing/account layouts, but authentication
+will not simulate success. Automated tests use mocks and need no environment file.
 
-Sample organizations, posts, categories, schedules, and opportunities live in `src/demo/content.ts`; they are not approved database seeds or API contracts. Demo session helpers live in `src/demo/session.ts`. Replace this boundary with the team's approved Supabase Auth integration later. The backend and database remain unchanged.
+## Account walkthrough
 
-The user approved this scope and the final visual drafts in chat. The earlier authentication implementation plan describes broader future backend work and does not govern this demo's integration scope. Role provisioning (D02), real session/profile synchronization (D07), and privacy/authorization (D08/D09) remain unresolved; the referenced decision register is missing from this checkout. No backend decisions are implied by the preview.
+1. Choose **Join SOW** or **Log in**. Signup sends email, password, first name, and last
+   name to Spring; all new accounts are STANDARD. Use a fresh development test account
+   for signup. It creates a real account, and the current backend contract requires
+   email confirmation to be disabled in that development project.
+2. Spring verifies the Supabase identity and persists/reads the application account.
+   The frontend adopts the returned session through the Supabase browser client and
+   fetches `/api/users/me` before showing the homepage with the profile's first name.
+3. Sessions persist across refreshes through [Supabase's standard localStorage session](https://supabase.com/docs/reference/javascript/auth)
+   lifecycle. The client handles refresh while the app is open and restores sessions
+   on reload. Tokens are accessible to JavaScript; never log or share browser storage.
+   Passwords are never stored in the application's browser storage.
+4. Invalid credentials stay on the form with a safe error. Profile outages offer retry;
+   missing profiles direct users to support. Invalid/expired sessions return to login.
+   Failed signup is never automatically retried, because the account may already exist.
+5. **Log out** clears the current browser's private UI and requests current-session
+   [sign-out with Supabase](https://supabase.com/docs/reference/javascript/auth-signout). If remote sign-out fails, this browser still forgets its
+   session and reports the failure. Existing access tokens may remain valid until expiry.
+   Other devices are not signed out.
 
-Run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, and `npm run build` to verify. Tests cover navigation, demo session restoration/clearing, form validity, credential omission, and preview actions. Asset origins are documented in `src/assets/README.md`.
+## Content boundary and verification
+
+Posts, organizations, categories, schedules, and opportunities remain sample fixtures in
+`src/demo/content.ts`. Likes/saves are temporary UI state; posting, commenting, and event
+registration remain previews. No feed, RSVP, role management, or profile-edit API is added.
+The legacy `sow-demo-session` value no longer grants access to the homepage.
+
+Run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, and
+`npm run build`. Tests cover API contracts, session restoration, protected navigation,
+safe failures, stale responses, refresh events, logout, and content previews. Live local verification is recorded below.
+
+## Verification — November 5, 2026
+
+All required frontend checks passed: `npm ci`, typecheck, lint, format check, 31 tests,
+and production build. Backend `./mvnw verify` passed 261 tests, formatting, and packaging.
+App tests explicitly isolate the API base so private `.env` values cannot affect them.
+
+With explicit user authorization, one development test account was created through the
+current local Spring signup endpoint (HTTP 201 with application account and session).
+Browser login loaded its real profile; reload preserved sign-in; logout returned to the
+landing page; a direct home visit after logout redirected to login. A wrong password
+was rejected, and a subsequent correct login succeeded. Repeating signup for this same
+account returned HTTP 409 / SIGNUP_CONFLICT, and a profile read without a token returned
+HTTP 401 / UNAUTHORIZED. The account remains in the development project; no automatic
+delete or reconciliation was performed. No personal account credentials or tokens are
+recorded here. Automatic token refresh is covered by mocked tests, not a timed live test.
+
+The user's private frontend setting targets Render. Render health/preflight/empty-login
+probes timed out in this environment, so its availability and CORS are unverified. Browser
+smoke testing used a process-only `VITE_API_BASE_URL=/api` override to reach the current
+local backend; the private Render setting was preserved. A normal restart without that
+override uses the configured Render URL. The local backend fixes still need normal team
+review and deployment before they can affect Render. No deployment was performed.

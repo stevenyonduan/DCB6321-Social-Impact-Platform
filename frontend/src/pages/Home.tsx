@@ -92,6 +92,7 @@ export function Home({ name }: { name: string }) {
             <span className="eyebrow">YOUR COMMUNITY STARTS HERE</span>
             <h1>Hi, {name}. Let’s do some good.</h1>
             <p>A small step today can make a difference close to home.</p>
+            <p>Community posts and opportunities below are sample previews.</p>
           </div>
           <span className="location">
             <MapPin aria-hidden="true" />

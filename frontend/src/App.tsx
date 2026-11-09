@@ -3,19 +3,16 @@ import { Header, Footer } from './components/Shell';
 import { Landing } from './pages/Landing';
 import { Account } from './pages/Account';
 import { Home } from './pages/Home';
-import {
-  readDemoSession,
-  startDemoSession,
-  endDemoSession,
-} from './demo/session';
+import { useAccount } from './auth/useAccount';
 import type { Page } from './navigation';
 import { getPage, NavigationContext } from './navigation';
 
 export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
-  const [session, setSession] = useState(readDemoSession);
+  const { state, signIn, logout, retry } = useAccount();
   const main = useRef<HTMLElement>(null);
-  const visiblePage = page === 'home' && !session ? 'login' : page;
+  const visiblePage =
+    page === 'home' && state.status === 'anonymous' ? 'login' : page;
 
   useEffect(() => {
     const onPopState = () => setPage(getPage());
@@ -24,28 +21,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'home' && !session) {
+    if (page === 'home' && state.status === 'anonymous') {
       window.history.replaceState(null, '', '/login');
     }
     document.title = `${visiblePage === 'landing' ? 'Making Service Social' : visiblePage === 'home' ? 'Your community' : visiblePage === 'signup' ? 'Join the community' : 'Welcome back'} | SOW`;
     main.current?.focus();
     window.scrollTo(0, 0);
-  }, [page, session, visiblePage]);
+  }, [page, state.status, visiblePage]);
 
   function navigate(next: Page) {
     window.history.pushState(null, '', next === 'landing' ? '/' : `/${next}`);
     setPage(next);
-  }
-
-  function enterDemo(displayName: string) {
-    setSession(startDemoSession(displayName));
-    navigate('home');
-  }
-
-  function logout() {
-    endDemoSession();
-    setSession(null);
-    navigate('landing');
   }
 
   return (
@@ -53,14 +39,50 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <Header page={visiblePage} onLogout={logout} />
+      <Header
+        page={visiblePage}
+        onLogout={() => {
+          void logout().then(() => navigate('landing'));
+        }}
+      />
       <main id="main-content" ref={main} tabIndex={-1}>
         {visiblePage === 'landing' && <Landing />}
-        {(visiblePage === 'login' || visiblePage === 'signup') && (
-          <Account key={visiblePage} mode={visiblePage} onEnter={enterDemo} />
+        {state.message && state.status !== 'error' && (
+          <p className="content-width form-error" role="status">
+            {state.message}
+          </p>
         )}
-        {visiblePage === 'home' && session && (
-          <Home name={session.displayName} />
+        {(visiblePage === 'login' || visiblePage === 'signup') &&
+          state.status !== 'signing-out' && (
+            <Account
+              key={visiblePage}
+              mode={visiblePage}
+              onEnter={async (input, signal) => {
+                await signIn(visiblePage, input, signal);
+                if (!signal.aborted) navigate('home');
+              }}
+            />
+          )}
+        {(visiblePage === 'home' && state.status === 'loading') ||
+        state.status === 'signing-out' ? (
+          <section className="account-section" role="status">
+            {state.status === 'signing-out'
+              ? 'Signing out…'
+              : 'Loading your profile…'}
+          </section>
+        ) : null}
+        {visiblePage === 'home' && state.status === 'error' && (
+          <section className="account-section">
+            <div className="account-card">
+              <p role="alert">{state.message}</p>
+              <button className="button primary" onClick={retry}>
+                Try again
+              </button>
+            </div>
+          </section>
+        )}
+        {visiblePage === 'home' && state.status === 'ready' && (
+          <Home name={state.profile.firstName} />
         )}
       </main>
       <Footer />

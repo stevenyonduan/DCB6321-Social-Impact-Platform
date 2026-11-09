@@ -9,7 +9,7 @@ application transaction commits. It does not prove email ownership. Persistent p
 require operator reconciliation; Auth identities are never deleted as compensation. See the
 [signup security, setup, and recovery contract](../backend/SIGNUP.md). This supersedes earlier
 verification/completion proposals for signup only. General protected-route JWT/authorization design
-below remains separate; this ticket adds no general authentication filter or frontend integration.
+below remains separate; the backend ticket adds no general authentication filter. The subsequently authorized frontend integration uses these endpoints and Supabase session lifecycle management.
 
 The subsequently approved [authenticated profile endpoint](../backend/PROFILE.md) verifies each
 Bearer token through Supabase's authenticated user API using the existing Auth client, then reads
@@ -52,3 +52,20 @@ HTTPS is required for hosted frontend/API/Auth/Storage traffic. Per the October 
 Actual `.env` files and credentials are ignored. Only public API URLs and Supabase publishable keys may use `VITE_*`; all such values become public build assets. Never put database passwords, signing secrets or Supabase service-role/secret keys in frontend code. Spring reads exported environment variables; it does not automatically load `.env`. Use separate development credentials, rotate any exposed secrets and avoid printing them in logs.
 
 The [account persistence ticket](../backend/ACCOUNTS.md) adds an internal JPA entity/repository/service and V001, which the project owner successfully applied manually in Supabase. The users table has its Auth UUID foreign key and RLS enabled by that migration, with browser-role table access revoked and no browser policies introduced. No account endpoints, passwords, or live credentials are added. Database integration is opt-in; no startup SQL runs. All 70 backend tests passed locally, including 10 tests against an isolated PostgreSQL container; the coding agent did not connect to Supabase. Live Render account-table permissions remain unverified. Backend access should use least-privilege database roles and parameterized queries. Broader Data API access and how Storage policies consume identity remain D09 decisions. Do not treat a privileged backend database connection as user authorization. Basic builds/tests remain credential-free.
+
+## Frontend authentication integration
+
+The user approved persistent browser sign-in across reloads. The frontend sends signup/login
+to Spring, adopts the returned access/refresh tokens through the official Supabase browser
+client, and uses its standard persistent localStorage session lifecycle with automatic refresh.
+This makes tokens accessible to JavaScript: preserve React output escaping and avoid raw HTML,
+request/header/body logging, or third-party scripts that can read credentials. Passwords are
+not stored in app state or browser storage. Public project URL/publishable key are the only
+Supabase settings exposed to Vite. The browser performs no direct application-table operations.
+
+Stored sessions are only credentials, never proof of authorization. The frontend obtains the
+application profile from authenticated `/api/users/me` before showing the homepage and clears
+private UI on sign-out or expiry. Logout targets the current session, clears this browser even
+when remote revocation fails, and reports remote failure. Already-issued access tokens can
+remain valid until expiry; logout does not promise immediate token invalidation or sign-out on
+other devices. Full backend resource authorization remains required for future features.

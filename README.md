@@ -2,7 +2,7 @@
 
 Georgia Tech DCB6321 Senior Design project for client Tracy Dansby. SIP connects college students and young adults in Atlanta with nonprofits and volunteer opportunities, combining discovery with a volunteering community.
 
-This repository prepares Development Readiness Sections 1–3 and includes an authorized **local frontend client demo** under the SOW brand: a landing page, simulated login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. Latest backend verification passed all 269 tests, including 18 isolated PostgreSQL integration tests; see [profile verification](backend/PROFILE.md#verification-record). The subsequently approved backend [single-step signup endpoint](backend/SIGNUP.md) now integrates Supabase Auth and account persistence when explicitly enabled. The subsequently approved [login endpoint](backend/LOGIN.md) authenticates existing accounts without provisioning. The authenticated [profile endpoint](backend/PROFILE.md) reads the current application account using a verified Supabase access token. Real frontend authentication remains separate work. Section 4 belongs to another teammate.
+This repository prepares Development Readiness Sections 1–3 and includes the authorized **SOW frontend**: a landing page, backend-connected login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. Latest backend verification passed all 269 tests, including 18 isolated PostgreSQL integration tests; see [profile verification](backend/PROFILE.md#verification-record). The subsequently approved backend [single-step signup endpoint](backend/SIGNUP.md) now integrates Supabase Auth and account persistence when explicitly enabled. The subsequently approved [login endpoint](backend/LOGIN.md) authenticates existing accounts without provisioning. The authenticated [profile endpoint](backend/PROFILE.md) reads the current application account using a verified Supabase access token. The frontend now calls these endpoints and uses the Supabase browser client for persistent sessions, refresh, and current-session sign-out. Live local signup, login, own-profile loading, session persistence across reload, and logout were verified on November 5, 2026. The Render deployment remains unverified. Section 4 belongs to another teammate.
 
 ## Approved stack and repository
 
@@ -36,9 +36,9 @@ npm ci
 npm run dev
 ```
 
-The starter does not need an environment file. For future approved integration work, copy `frontend/.env.example` to `frontend/.env.local` and replace the placeholders with development configuration.
+Copy `frontend/.env.example` to the ignored `frontend/.env.local` and supply the same development Supabase URL and publishable key used by the backend. No database credentials belong in this file. Restart Vite after changing it. Landing and account layouts remain available without configuration; real sign-in requires configured services.
 
-Open `http://127.0.0.1:5173`. The frontend demo runs independently of the backend with local assets and sample content. Use made-up details in its login/sign-up forms. Vite proxies `/api` to the local backend at `http://127.0.0.1:8080`; optional exported `DEV_API_TARGET` changes the proxy destination. `VITE_API_BASE_URL=/api` is reserved for future API code; the demo makes no API requests. `npm run preview` serves the production build locally after `npm run build`.
+Open `http://127.0.0.1:5173`. Signup and login call the backend and use real development accounts. Do not submit made-up credentials expecting a simulated login. Community posts and opportunities remain sample previews. Vite proxies `/api` to the local backend at `http://127.0.0.1:8080`; optional exported `DEV_API_TARGET` changes the proxy destination. `VITE_API_BASE_URL=/api` selects the API prefix. For a deployed backend, configure its full API URL and exact-origin CORS. The production preview has no development proxy; use a working API URL or a separately configured same-origin reverse proxy. `npm run preview` serves the production build locally after `npm run build`.
 
 ## Run the backend
 
@@ -59,12 +59,12 @@ Expected: `{"status":"UP"}`. This endpoint checks application availability only.
 
 ## Environment and development database
 
-Copy templates only to ignored local files. Spring Boot **does not automatically read `.env` files**: configure exported variables or your IDE run environment. Vite loads `frontend/.env.local`; VITE_* values are public and frozen into the build. Backend signup/login/profile uses the Supabase URL/publishable key only when explicitly enabled; see [signup setup](backend/SIGNUP.md). Frontend Auth placeholders remain unused by the demo. Never put a Supabase secret/service-role key or database password in VITE_*.
+Copy templates only to ignored local files. Spring Boot **does not automatically read `.env` files**: configure exported variables or your IDE run environment. Vite loads `frontend/.env.local`; VITE_* values are public and frozen into the build. Backend signup/login/profile uses the Supabase URL/publishable key only when explicitly enabled; see [signup setup](backend/SIGNUP.md). The frontend uses public Auth settings to adopt backend-issued sessions and manage their lifecycle; it never accesses application tables directly. Never put a Supabase secret/service-role key or database password in VITE_*.
 
 | Variable | Consumer | Meaning |
 | --- | --- | --- |
-| VITE_API_BASE_URL | Future frontend API adapter | `/api` locally; approved hosted API URL later |
-| VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY | Future frontend Auth integration | Public development project configuration |
+| VITE_API_BASE_URL | Frontend API client | `/api` locally; approved hosted API URL later |
+| VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY | Frontend session lifecycle | Public development project configuration |
 | SPRING_PROFILES_ACTIVE | Spring | `local` (offline default), explicit `database`, or Docker's `prod` default (`render` is a compatibility alias) |
 | SERVER_ADDRESS / SERVER_PORT | Spring | Local defaults 127.0.0.1 / 8080; `PORT` takes precedence over SERVER_PORT |
 | SIP_DB_URL | Spring database profile | Development-only JDBC PostgreSQL URL with TLS |
