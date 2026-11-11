@@ -31,6 +31,11 @@ Organization FK stores the account association; the PDF says ADMIN and ORGANIZAT
 
 ## organizations
 
+The subsequently approved [organization profile ticket](../backend/ORGANIZATIONS.md) implements
+these six fields and the deferred users.organization_id foreign key through additive V002.
+UUID v4 SQL defaults use PostgreSQL 13+ `gen_random_uuid()` without an extension dependency;
+verification and creation timestamps retain database defaults. V001 remains unchanged.
+
 Nonprofit/volunteer organization entity. Source: DDD p. 13.
 
 | Column | PostgreSQL type | Nullable | Keys, defaults and constraints |

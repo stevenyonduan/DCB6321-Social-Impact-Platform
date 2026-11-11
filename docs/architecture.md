@@ -28,7 +28,12 @@ The [data model and original relationship diagram](data-model.md#relationship-di
 
 ## Integration boundaries
 
-- React calls Spring Boot REST endpoints over HTTPS with JSON. [api.md](api.md) records the DDD interface requirements; endpoint contracts and token transport remain unspecified. The scaffold health endpoint is documented separately.
+- The [organization profile API](../backend/ORGANIZATIONS.md) extends account/profile responsibilities
+  with JPA organization persistence and V002. It reuses Supabase-backed ProfileService verification,
+  enforces persisted role/association ownership in the service layer, and exposes allowlisted DTOs.
+  Internal organization creation has no public endpoint; organization signup is a separate phase.
+
+- React calls Spring Boot REST endpoints over HTTPS with JSON. [api.md](api.md) records the DDD interface requirements and subsequent authentication/profile contracts; other endpoint contracts remain unspecified. The scaffold health endpoint is documented separately.
 - Spring services apply authorization and business rules before using database repositories. The account persistence ticket adds Spring Data JPA and a manually applied, versioned users-table migration; see [account persistence](../backend/ACCOUNTS.md). Browser access must not bypass backend business logic.
 - Supabase Auth owns authentication and passwords. The subsequently approved [signup integration](../backend/SIGNUP.md) uses the standard Auth API with email confirmation disabled, validates its session through authenticated user lookup, creates a STANDARD account via UserService, and returns the session after commit. The subsequently approved [authenticated profile endpoint](../backend/PROFILE.md) reuses authenticated Supabase user lookup and reads only the verified UUID through UserService. The subsequently approved browser integration calls Spring for signup/login/profile and adopts returned sessions through the Supabase browser client, with persistent storage, token refresh, and current-session sign-out. General protected-route signing-key verification and broader authorization remain separate work (D02, D07).
 - Supabase Storage owns image bytes; approved tables store URL references. JPEG/PNG and type/size validation are approved. Bucket policy, maximum size, private URL strategy and upload route remain pending (D06).

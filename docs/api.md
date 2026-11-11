@@ -2,6 +2,13 @@
 
 ## Subsequently approved authentication contracts
 
+The subsequently approved organization-profile ticket adds authenticated
+`GET /api/organizations/{id}`, `GET /api/organizations/me`, and owner-authorized
+`PATCH /api/organizations/{id}`. See [organization profiles](../backend/ORGANIZATIONS.md)
+for JSON/TypeScript contracts, errors, V002 and manual deployment. Only persisted ORGANIZATION
+accounts associated with the target can edit; ADMIN has no override. Organization signup is
+not implemented and remains a separate ticket.
+
 The project owner approved and authorized `POST /api/auth/signup` with email confirmation disabled,
 STANDARD-only account creation, server-side validation of the returned Supabase identity, and
 allowlisted JSON session delivery after application persistence. The exact contract, errors,
@@ -12,7 +19,7 @@ The subsequently approved `POST /api/auth/login` contract is documented in
 identity through the existing Auth client, and returns only that UUID's application profile with
 `Cache-Control: no-store`. No confirmation/completion or profile-editing endpoint is included.
 The DDD transcription below remains source history; endpoint details are resolved only for the
-authorized signup, login, and authenticated-profile tickets.
+authorized signup, login, authenticated-profile, and organization-profile tickets.
 
 Source: [Detailed Design Document](../Detailed%20Design%20Doc.pdf) (DDD), pp. 5–9 and 12–19. This document records the interface requirements established by the DDD. The DDD does not define individual endpoint paths, HTTP methods, request/response schemas or error contracts; those details remain unspecified rather than being supplied as proposed contracts here.
 
