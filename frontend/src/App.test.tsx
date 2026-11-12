@@ -201,7 +201,7 @@ describe('backend account integration', () => {
     );
     render(<App />);
     await screen.findByRole('heading', { name: 'Welcome back.' });
-    expect(window.location.pathname).toBe('/login');
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
     expect(fetch).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('link', { name: 'SOW home' }));
     expect(window.location.pathname).toBe('/');
@@ -495,7 +495,7 @@ describe('profile page', () => {
 
     act(() => emit('SIGNED_OUT', null));
     await screen.findByRole('heading', { name: 'Welcome back.' });
-    expect(window.location.pathname).toBe('/login');
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
     expect(screen.queryByText('sam@example.com')).toBeNull();
   });
 
@@ -503,7 +503,7 @@ describe('profile page', () => {
     window.history.replaceState(null, '', '/profile');
     render(<App />);
     await screen.findByRole('heading', { name: 'Welcome back.' });
-    expect(window.location.pathname).toBe('/login');
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
     expect(screen.queryByRole('link', { name: 'Profile' })).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
