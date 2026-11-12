@@ -2,6 +2,7 @@ import { ArrowUpRight, LogOut } from 'lucide-react';
 import logo from '../assets/sow-logo.png';
 import { PageLink } from '../components/PageLink';
 import type { Page } from '../navigation';
+import { isAccountPage } from '../navigation';
 
 export function Header({
   page,
@@ -37,15 +38,27 @@ export function Header({
                 Join SOW <ArrowUpRight aria-hidden="true" />
               </PageLink>
             </>
-          ) : (
+          ) : isAccountPage(page) ? (
             <>
-              {page === 'home' && (
-                <button className="text-link logout" onClick={onLogout}>
-                  Log out <LogOut aria-hidden="true" />
-                </button>
-              )}
+              <div className="account-nav-links">
+                <PageLink
+                  page="home"
+                  aria-current={page === 'home' ? 'page' : undefined}
+                >
+                  Feed
+                </PageLink>
+                <PageLink
+                  page="profile"
+                  aria-current={page === 'profile' ? 'page' : undefined}
+                >
+                  Profile
+                </PageLink>
+              </div>
+              <button className="text-link logout" onClick={onLogout}>
+                Log out <LogOut aria-hidden="true" />
+              </button>
             </>
-          )}
+          ) : null}
         </nav>
       </div>
     </header>

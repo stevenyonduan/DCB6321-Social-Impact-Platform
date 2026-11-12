@@ -3,16 +3,26 @@ import { Header, Footer } from './components/Shell';
 import { Landing } from './pages/Landing';
 import { Account } from './pages/Account';
 import { Home } from './pages/Home';
+import { ProfilePage } from './pages/Profile';
 import { useAccount } from './auth/useAccount';
 import type { Page } from './navigation';
-import { getPage, NavigationContext } from './navigation';
+import { getPage, isAccountPage, NavigationContext } from './navigation';
+
+const pageTitles: Record<Page, string> = {
+  landing: 'Making Service Social',
+  login: 'Welcome back',
+  signup: 'Join the community',
+  home: 'Your community',
+  profile: 'Profile',
+};
 
 export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
   const { state, signIn, logout, retry } = useAccount();
   const main = useRef<HTMLElement>(null);
-  const visiblePage =
-    page === 'home' && state.status === 'anonymous' ? 'login' : page;
+  const accountPage = isAccountPage(page);
+  const redirectToLogin = accountPage && state.status === 'anonymous';
+  const visiblePage = redirectToLogin ? 'login' : page;
 
   useEffect(() => {
     const onPopState = () => setPage(getPage());
@@ -21,13 +31,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'home' && state.status === 'anonymous') {
+    if (redirectToLogin) {
       window.history.replaceState(null, '', '/login');
     }
-    document.title = `${visiblePage === 'landing' ? 'Making Service Social' : visiblePage === 'home' ? 'Your community' : visiblePage === 'signup' ? 'Join the community' : 'Welcome back'} | SOW`;
+    document.title = `${pageTitles[visiblePage]} | SOW`;
     main.current?.focus();
     window.scrollTo(0, 0);
-  }, [page, state.status, visiblePage]);
+  }, [redirectToLogin, state.status, visiblePage]);
 
   function navigate(next: Page) {
     window.history.pushState(null, '', next === 'landing' ? '/' : `/${next}`);
@@ -63,7 +73,7 @@ export default function App() {
               }}
             />
           )}
-        {(visiblePage === 'home' && state.status === 'loading') ||
+        {(accountPage && state.status === 'loading') ||
         state.status === 'signing-out' ? (
           <section className="account-section" role="status">
             {state.status === 'signing-out'
@@ -71,7 +81,7 @@ export default function App() {
               : 'Loading your profile…'}
           </section>
         ) : null}
-        {visiblePage === 'home' && state.status === 'error' && (
+        {accountPage && state.status === 'error' && (
           <section className="account-section">
             <div className="account-card">
               <p role="alert">{state.message}</p>
@@ -83,6 +93,9 @@ export default function App() {
         )}
         {visiblePage === 'home' && state.status === 'ready' && (
           <Home name={state.profile.firstName} />
+        )}
+        {visiblePage === 'profile' && state.status === 'ready' && (
+          <ProfilePage profile={state.profile} />
         )}
       </main>
       <Footer />

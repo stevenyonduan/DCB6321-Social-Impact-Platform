@@ -6,6 +6,7 @@ import {
   within,
   waitFor,
   act,
+  fireEvent,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -416,5 +417,94 @@ describe('backend account integration', () => {
     expect(screen.queryByText(/provider secret/)).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(window.location.pathname).toBe('/signup');
+  });
+});
+
+describe('profile page', () => {
+  it('navigates between Feed and Profile with one authenticated profile request', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    render(<App />);
+    await screen.findByRole('heading', { name: /Hi, Sam/ });
+
+    const nav = within(
+      screen.getByRole('navigation', { name: 'Main navigation' }),
+    );
+    expect(nav.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Feed',
+      'Profile',
+    ]);
+    expect(
+      nav.getByRole('link', { name: 'Feed' }).getAttribute('aria-current'),
+    ).toBe('page');
+    await userEvent.click(nav.getByRole('link', { name: 'Profile' }));
+    expect(window.location.pathname).toBe('/profile');
+    expect(document.title).toBe('Profile | SOW');
+    expect(
+      nav.getByRole('link', { name: 'Profile' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.getByRole('heading', { name: 'Sam Example' })).toBeTruthy();
+    expect(screen.getByText('SE')).toBeTruthy();
+    expect(screen.getByText('No bio yet.')).toBeTruthy();
+    expect(screen.getByText('sam@example.com')).toBeTruthy();
+    expect(screen.getByText('November 2026')).toBeTruthy();
+
+    await userEvent.click(nav.getByRole('link', { name: 'Feed' }));
+    expect(window.location.pathname).toBe('/home');
+    expect(screen.getByRole('heading', { name: /Hi, Sam/ })).toBeTruthy();
+    expect(screen.queryByText('sam@example.com')).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    window.history.back();
+    await screen.findByRole('heading', { name: 'Sam Example' });
+  });
+
+  it('renders a saved bio and avatar on a direct visit and falls back if the image fails', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch).mockResolvedValue(
+      json({
+        ...profile,
+        bio: 'I volunteer at a community garden.',
+        avatarUrl: 'https://example.com/avatar.jpg',
+      }),
+    );
+    const { container } = render(<App />);
+    await screen.findByRole('heading', { name: 'Sam Example' });
+    expect(screen.getByText('I volunteer at a community garden.')).toBeTruthy();
+    const avatar = container.querySelector('.profile-avatar img')!;
+    expect(avatar.getAttribute('src')).toBe('https://example.com/avatar.jpg');
+    fireEvent.error(avatar);
+    expect(screen.getByText('SE')).toBeTruthy();
+  });
+
+  it('shows loading and retry on a direct visit while keeping account data private', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json({ code: 'ACCOUNT_UNAVAILABLE' }, 503))
+      .mockResolvedValue(json(profile));
+    render(<App />);
+    expect(screen.getByRole('status').textContent).toBe(
+      'Loading your profile…',
+    );
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('sam@example.com')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('heading', { name: 'Sam Example' });
+
+    act(() => emit('SIGNED_OUT', null));
+    await screen.findByRole('heading', { name: 'Welcome back.' });
+    expect(window.location.pathname).toBe('/login');
+    expect(screen.queryByText('sam@example.com')).toBeNull();
+  });
+
+  it('redirects an anonymous direct visit to login without requesting private data', async () => {
+    window.history.replaceState(null, '', '/profile');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Welcome back.' });
+    expect(window.location.pathname).toBe('/login');
+    expect(screen.queryByRole('link', { name: 'Profile' })).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
