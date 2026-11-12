@@ -154,7 +154,13 @@ Organization-created volunteer opportunities. Source: DDD p. 16.
 | location | VARCHAR(255) | No | — |
 | created_at | TIMESTAMPTZ | No | Default NOW() |
 
-Organization account event management is described on p. 19 while creator_id describes an admin; clarify roles (D02). End-after-start validation is PROPOSED. No capacity, status, event-interest junction or recurrence fields exist.
+The subsequently approved [opportunity publishing ticket](../backend/OPPORTUNITIES.md) implements
+these ten fields through additive V003. For this bounded D02 resolution, creator_id records the
+authenticated ORGANIZATION manager; ADMIN has no publishing authority. V003 uses gen_random_uuid()
+as the SQL UUID default, database-generated created_at, NO ACTION foreign keys, RLS with browser
+privileges revoked, and an organization/start/id index. Nonblank required text and strictly
+increasing start/end at microsecond precision are adopted API rules. Past events are accepted
+and listed. No capacity, status, event-interest junction or recurrence fields are added.
 
 ## event_registrations
 

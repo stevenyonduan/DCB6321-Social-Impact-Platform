@@ -1,5 +1,14 @@
 # API and interfaces — Detailed Design Document requirements
 
+## Subsequently approved opportunity contract
+
+`POST /api/organizations/me/opportunities` returns 201 for a persisted ORGANIZATION manager.
+The server derives organizationId/creatorId; unknown fields are rejected.
+`GET /api/organizations/{organizationId}/opportunities?page=0&size=20` returns an authenticated
+paginated object ordered by event_start/id ascending, including past events. Page is 0–10000,
+size 1–100. See [opportunities](../backend/OPPORTUNITIES.md) for complete JSON/TypeScript contracts,
+validation, permissions, V003, tests, and manual deployment. ADMIN cannot publish.
+
 ## Subsequently approved authentication contracts
 
 The subsequently approved organization-profile ticket adds authenticated
