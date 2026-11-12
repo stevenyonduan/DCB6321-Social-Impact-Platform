@@ -44,6 +44,21 @@ The design requires login for platform access, distinct STANDARD/ADMIN/ORGANIZAT
 
 Resource ownership must be checked after identity validation. Derive author/sender/volunteer/reviewer IDs from identity. Verify each event and hour record belongs to the organization the reviewer can manage. Do not let a user promote themselves or set `is_verified`. **PROPOSED:** forbid self-verification and only transition PENDING submissions once; clarify review reversals (D10). Authorize organization-linked posts separately from ordinary posts.
 
+The subsequently approved [opportunity API](../backend/OPPORTUNITIES.md) extends the bounded D02
+policy: only a persisted ORGANIZATION account with an existing associated organization may
+publish. Both organization and creator IDs derive from the verified account; protected fields
+are rejected. ADMIN has no override, and is_verified is not a publication prerequisite. Any
+authenticated application account may list an organization’s events. V003 enables events RLS,
+revokes browser-role privileges and adds no browser policies. Registration type does not change any permission. The approved
+PR #19 extension validates future starts against an injected server clock, rejects client time,
+and lists only upcoming events in SQL while retaining historical rows. EXTERNAL registration
+URLs are untrusted references: the API validates absolute HTTP(S), host, credentials, ports, and
+unsafe control/Unicode characters without fetching or granting volunteer-data access. HTTP is
+permitted; HTTPS is recommended. A future frontend must show the destination domain, use safe
+external links, avoid automatic redirects and transmitting tokens/sensitive data, and never count
+a link click as registration. INTERNAL is the omission default; no RSVP/registration records or
+provider integrations are implemented. Broader ADMIN/verification and D06 Storage policy remain open.
+
 ## Data privacy and moderation
 
 Only return public profile fields approved by the team; email, saved items, private account data and hour histories require explicit access policy. Message reads are limited to sender/recipient; never grant automatic administrator access to message contents. DDD specifies admin monitoring of posts/comments, not messages. Proposed deletion endpoints require approved moderation scope, delete/FK behavior and audit/retention rules before implementation. Avoid token, message content, database URL/password and personal-data logging. Use parameterized database access and output escaping; do not render user text as trusted HTML.

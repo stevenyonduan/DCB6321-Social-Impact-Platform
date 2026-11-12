@@ -39,6 +39,11 @@ The [data model and original relationship diagram](data-model.md#relationship-di
 - Supabase Storage owns image bytes; approved tables store URL references. JPEG/PNG and type/size validation are approved. Bucket policy, maximum size, private URL strategy and upload route remain pending (D06).
 - Production uses HTTPS. Local loopback HTTP is only a development convenience. Vercel deployment and backend deployment are not configured in this readiness task.
 
+The approved [opportunity API](../backend/OPPORTUNITIES.md) adds an opportunity package within
+the existing backend: controllers/DTOs, transactional authorization service, and JPA event
+persistence. It reuses ProfileService and the existing account/organization models. Manual V003
+adds only events; no framework, service split, frontend feature, or automatic migration is added.
+
 ## Implementation constraints
 
 Keep business rules in backend services, not React or controllers. Maintain transactional consistency for relationship writes and hours review. Never trust client-supplied roles, authors or verification identities. Use DTOs that expose only authorized fields. Preserve UUIDs, composite keys and the approved tables; resolve schema gaps before migrations. Do not introduce frameworks, platforms, service splitting, realtime transports or algorithms without a documented need and review. No business features or schema migrations are part of this scaffold.
