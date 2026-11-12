@@ -1,5 +1,10 @@
 # Account persistence
 
+The subsequent [organization profile ticket](ORGANIZATIONS.md) adds V002 and the deferred
+`users.organization_id` foreign key. V001 and its original deployment history below remain
+unchanged. Organization creation/read/edit support does not implement organization signup or
+automatic assignment of existing users. Apply V002 manually before deploying the new API.
+
 The subsequently approved [signup ticket](SIGNUP.md) now calls this internal service after
 authenticated Supabase identity validation, with email confirmation disabled. The original
 persistence scope and deployment history below remain unchanged; V001 must not be edited/rerun.

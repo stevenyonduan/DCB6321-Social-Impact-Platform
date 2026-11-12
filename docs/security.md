@@ -27,6 +27,13 @@ React obtains a Supabase session; Spring verifies bearer access-token signatures
 
 ## Authorization boundaries
 
+The subsequently approved [organization profile API](../backend/ORGANIZATIONS.md) resolves a
+bounded portion of D02: authenticated application accounts may read the six organization profile
+fields; only persisted ORGANIZATION accounts whose users.organization_id matches the target may
+edit name/description/website. ADMIN has no edit override. Unknown/protected patch fields are
+rejected. V002 enables organizations RLS and revokes PUBLIC/anon/authenticated privileges without
+adding browser policies. Following/membership, verification and broader ADMIN policy remain open.
+
 The design requires login for platform access, distinct STANDARD/ADMIN/ORGANIZATION permissions, private saved posts, moderation of posts/comments and authorized organization management/verification. Exact matrix is **PROPOSED**, pending D02:
 
 | Role | Intended permitted actions | Boundary |
