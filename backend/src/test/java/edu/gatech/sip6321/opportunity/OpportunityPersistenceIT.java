@@ -8,7 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import edu.gatech.sip6321.account.UserService;
 import edu.gatech.sip6321.auth.SupabaseAuthClient;
 import edu.gatech.sip6321.organization.OrganizationProvisioningService;
-import java.time.Instant;
+import java.sql.Timestamp;
+import java.time.*;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
@@ -53,6 +55,8 @@ class OpportunityPersistenceIT {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @MockitoBean SupabaseAuthClient auth;
+    @MockitoBean Clock clock;
+    static final Instant NOW = OpportunityServiceTest.NOW;
     JdbcTemplate jdbc;
     UUID orgA, orgB, managerA, managerB, standard;
     static final String POST = "/api/organizations/me/opportunities";
@@ -84,6 +88,7 @@ class OpportunityPersistenceIT {
 
     @BeforeEach
     void setup() {
+        when(clock.instant()).thenReturn(NOW);
         jdbc = new JdbcTemplate(dataSource);
         jdbc.update("DELETE FROM public.events");
         jdbc.update("DELETE FROM public.users");
@@ -121,26 +126,55 @@ class OpportunityPersistenceIT {
                                         .content(body))
                         .andExpect(status().isCreated())
                         .andReturn();
-        return UUID.fromString(
-                json.readTree(result.getResponse().getContentAsString()).get("id").asString());
+        var response = json.readTree(result.getResponse().getContentAsString());
+        var request = json.readTree(body);
+        assertThat(response.get("registrationType").asString())
+                .isEqualTo(
+                        request.has("registrationType")
+                                ? request.get("registrationType").asString()
+                                : "INTERNAL");
+        if (request.get("registrationUrl") == null || request.get("registrationUrl").isNull())
+            assertThat(response.get("registrationUrl").isNull()).isTrue();
+        else
+            assertThat(response.get("registrationUrl").asString())
+                    .isEqualTo(request.get("registrationUrl").asString());
+        return UUID.fromString(response.get("id").asString());
     }
 
     @Test
     void publishesPersistsReloadsAndListsOnlyInOwningOrganization() throws Exception {
         UUID id = publish("manager-a", BODY);
+        String url = "https://example.org/volunteer/register?event=" + "x".repeat(300);
+        UUID externalId = publish("manager-a", externalBody(url));
         var row = jdbc.queryForMap("SELECT * FROM public.events WHERE id=?", id);
         assertThat(row.get("organization_id")).isEqualTo(orgA);
         assertThat(row.get("creator_id")).isEqualTo(managerA);
         assertThat(row.get("created_at")).isNotNull();
+        assertThat(row.get("registration_type")).isEqualTo("INTERNAL");
+        assertThat(row.get("registration_url")).isNull();
+        var external = events.findById(externalId).orElseThrow().response();
+        assertThat(external.registrationType()).isEqualTo(RegistrationType.EXTERNAL);
+        assertThat(external.registrationUrl()).isEqualTo(url);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT registration_url FROM public.events WHERE id=?",
+                                String.class,
+                                externalId))
+                .isEqualTo(url);
         var reloaded = events.findById(id).orElseThrow().response();
         assertThat(reloaded.eventStart()).isEqualTo(Instant.parse("2027-01-16T14:00:00Z"));
         assertThat(reloaded.createdAt()).isNotNull();
         for (String token : List.of("manager-a", "manager-b", "standard")) {
             mvc.perform(get(path(orgA)).header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items.length()").value(2))
                     .andExpect(jsonPath("$.items[0].id").value(id.toString()))
-                    .andExpect(jsonPath("$.items[0].creatorId").value(managerA.toString()));
+                    .andExpect(jsonPath("$.items[0].creatorId").value(managerA.toString()))
+                    .andExpect(jsonPath("$.items[0].registrationType").value("INTERNAL"))
+                    .andExpect(jsonPath("$.items[0].registrationUrl").value((Object) null))
+                    .andExpect(jsonPath("$.items[1].id").value(externalId.toString()))
+                    .andExpect(jsonPath("$.items[1].registrationType").value("EXTERNAL"))
+                    .andExpect(jsonPath("$.items[1].registrationUrl").value(url));
             mvc.perform(get(path(orgB)).header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.items").isEmpty());
@@ -148,6 +182,14 @@ class OpportunityPersistenceIT {
         UUID bId = publish("manager-b", BODY);
         assertThat(events.findById(bId).orElseThrow().response().organizationId()).isEqualTo(orgB);
         var before = jdbc.queryForList("SELECT * FROM public.events ORDER BY id");
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer manager-a")
+                                .contentType("application/json")
+                                .content(BODY.replace("2027-01-16", "2000-01-16")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EVENT_START_NOT_FUTURE"));
+        assertThat(jdbc.queryForList("SELECT * FROM public.events ORDER BY id")).isEqualTo(before);
         mvc.perform(
                         post(POST)
                                 .header("Authorization", "Bearer standard")
@@ -191,15 +233,18 @@ class OpportunityPersistenceIT {
     }
 
     @Test
-    void chronologicalPaginationHasStableTieBreakerAndIncludesPastEvents() throws Exception {
+    void upcomingSqlPaginationHasStableTieBreakerAndPreservesHistoricalEvents() throws Exception {
         for (int i = 0; i < 5; i++) publish("manager-a", BODY);
-        publish("manager-a", BODY.replace("2027-01-16", "2000-01-16"));
+        publish("manager-a", BODY.replace("2027-01-16", "2027-01-17"));
+        var pastId = storedEvent(Instant.parse("2000-01-01T00:00:00Z"), orgA, managerA);
+        var atCutoffId = storedEvent(NOW.truncatedTo(ChronoUnit.MICROS), orgA, managerA);
         publish("manager-b", BODY);
         var expected =
                 jdbc.queryForList(
-                        "SELECT id FROM public.events WHERE organization_id=? ORDER BY event_start,id",
+                        "SELECT id FROM public.events WHERE organization_id=? AND event_start > ? ORDER BY event_start,id",
                         UUID.class,
-                        orgA);
+                        orgA,
+                        Timestamp.from(NOW.truncatedTo(ChronoUnit.MICROS)));
         var actual = new ArrayList<UUID>();
         for (int page = 0; page < 3; page++) {
             var result =
@@ -216,8 +261,10 @@ class OpportunityPersistenceIT {
                 actual.add(UUID.fromString(item.get("id").asString()));
         }
         assertThat(actual).containsExactlyElementsOf(expected).doesNotHaveDuplicates();
-        assertThat(events.findById(actual.getFirst()).orElseThrow().response().eventStart())
-                .isBefore(Instant.parse("2001-01-01T00:00:00Z"));
+        assertThat(actual).doesNotContain(pastId, atCutoffId);
+        assertThat(events.findById(pastId)).isPresent();
+        assertThat(events.findById(atCutoffId)).isPresent();
+        assertThat(events.count()).isEqualTo(9);
         mvc.perform(
                         get(path(orgA))
                                 .header("Authorization", "Bearer standard")
@@ -304,7 +351,8 @@ class OpportunityPersistenceIT {
                         "event_start",
                         "event_end",
                         "location",
-                        "created_at"))
+                        "created_at",
+                        "registration_type"))
             assertThatThrownBy(() -> jdbc.execute("UPDATE public.events SET " + column + "=NULL"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         for (String column : List.of("title", "location", "image_url")) {
@@ -336,7 +384,9 @@ class OpportunityPersistenceIT {
                         "event_start",
                         "event_end",
                         "location",
-                        "created_at");
+                        "created_at",
+                        "registration_type",
+                        "registration_url");
         assertThat(
                         jdbc.queryForList(
                                 "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='events' AND column_name IN ('event_start','event_end','created_at')",
@@ -380,5 +430,152 @@ class OpportunityPersistenceIT {
                                         role,
                                         privilege))
                         .isFalse();
+    }
+
+    private String externalBody(String url) {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("registrationType", "EXTERNAL");
+        node.put("registrationUrl", url);
+        node.put("eventStart", "2027-01-17T09:00:00-05:00");
+        node.put("eventEnd", "2027-01-17T12:00:00-05:00");
+        return json.writeValueAsString(node);
+    }
+
+    private UUID storedEvent(Instant start, UUID organization, UUID creator) {
+        return jdbc.queryForObject(
+                "INSERT INTO public.events(organization_id,creator_id,title,description,event_start,event_end,location) VALUES (?,?,'Fixture','Description',?,?,'Atlanta') RETURNING id",
+                UUID.class,
+                organization,
+                creator,
+                Timestamp.from(start),
+                Timestamp.from(start.plusSeconds(3600)));
+    }
+
+    @Test
+    void registrationDefaultsAndCombinationsAreEnforcedByPostgres() {
+        UUID id = storedEvent(NOW.plusSeconds(3600), orgA, managerA);
+        var internal = events.findById(id).orElseThrow().response();
+        assertThat(internal.registrationType()).isEqualTo(RegistrationType.INTERNAL);
+        assertThat(internal.registrationUrl()).isNull();
+        for (String[] invalid :
+                new String[][] {
+                    {null, null},
+                    {"UNKNOWN", null},
+                    {"internal", null},
+                    {"INTERNAL", "https://example.org"},
+                    {"INTERNAL", ""},
+                    {"EXTERNAL", null},
+                    {"EXTERNAL", ""},
+                    {"EXTERNAL", " "},
+                    {"EXTERNAL", "\t\n\r"}
+                }) {
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE public.events SET registration_type=?, registration_url=? WHERE id=?",
+                                            invalid[0],
+                                            invalid[1],
+                                            id))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+        jdbc.update(
+                "UPDATE public.events SET registration_type='EXTERNAL', registration_url=? WHERE id=?",
+                "https://example.org/register",
+                id);
+        assertThat(events.findById(id).orElseThrow().response().registrationType())
+                .isEqualTo(RegistrationType.EXTERNAL);
+        jdbc.update(
+                "UPDATE public.events SET registration_type='INTERNAL', registration_url=NULL WHERE id=?",
+                id);
+        assertThat(events.findById(id).orElseThrow().response().registrationType())
+                .isEqualTo(RegistrationType.INTERNAL);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM pg_constraint WHERE conrelid='public.events'::regclass AND conname IN ('events_registration_type_check','events_registration_url_check') AND convalidated",
+                                Integer.class))
+                .isEqualTo(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='events' AND column_name='registration_type'",
+                                String.class))
+                .contains("INTERNAL");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='events' AND column_name='registration_url'",
+                                String.class))
+                .isEqualTo("text");
+    }
+
+    @Test
+    void publicationRejectsPastEqualAndSubMicrosecondFutureStartsWithoutRows() throws Exception {
+        for (Instant start : List.of(NOW.minusSeconds(1), NOW, NOW.plusNanos(1))) {
+            var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+            node.put("eventStart", start.toString());
+            mvc.perform(
+                            post(POST)
+                                    .header("Authorization", "Bearer manager-a")
+                                    .contentType("application/json")
+                                    .content(json.writeValueAsString(node)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("EVENT_START_NOT_FUTURE"));
+            assertThat(events.count()).isZero();
+        }
+        var nextMicro = Instant.parse("2027-01-01T00:00:00.123457Z");
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("eventStart", nextMicro.toString());
+        UUID id = publish("manager-a", json.writeValueAsString(node));
+        assertThat(events.findById(id).orElseThrow().response().eventStart()).isEqualTo(nextMicro);
+        mvc.perform(get(path(orgA)).header("Authorization", "Bearer standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(id.toString()));
+        when(clock.instant()).thenReturn(nextMicro);
+        mvc.perform(get(path(orgA)).header("Authorization", "Bearer standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        assertThat(events.findById(id)).isPresent();
+        assertThat(events.count()).isEqualTo(1);
+    }
+
+    @Test
+    void agingEventsDisappearFromListingsButRemainStored() throws Exception {
+        UUID id = publish("manager-a", BODY);
+        when(clock.instant()).thenReturn(Instant.parse("2027-01-16T14:00:00Z"));
+        mvc.perform(get(path(orgA)).header("Authorization", "Bearer standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        when(clock.instant()).thenReturn(Instant.parse("2028-01-01T00:00:00Z"));
+        mvc.perform(get(path(orgA)).header("Authorization", "Bearer standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        assertThat(events.findById(id)).isPresent();
+    }
+
+    @Test
+    void invalidRegistrationNeverWritesAndExplicitInternalPersists() throws Exception {
+        for (String fields :
+                List.of(
+                        "\"registrationType\":null",
+                        "\"registrationType\":\"OTHER\"",
+                        "\"registrationType\":\"EXTERNAL\"",
+                        "\"registrationType\":\"INTERNAL\",\"registrationUrl\":\"https://example.org\"",
+                        "\"registrationType\":\"EXTERNAL\",\"registrationUrl\":\"javascript:alert(1)\"")) {
+            String body = BODY.replace("\"imageUrl\":null", fields);
+            mvc.perform(
+                            post(POST)
+                                    .header("Authorization", "Bearer manager-a")
+                                    .contentType("application/json")
+                                    .content(body))
+                    .andExpect(status().isBadRequest());
+            assertThat(events.count()).isZero();
+        }
+        UUID id =
+                publish(
+                        "manager-a",
+                        BODY.replace(
+                                "\"imageUrl\":null",
+                                "\"registrationType\":\"INTERNAL\",\"registrationUrl\":null"));
+        assertThat(events.findById(id).orElseThrow().response().registrationType())
+                .isEqualTo(RegistrationType.INTERNAL);
+        assertThat(events.findById(id).orElseThrow().response().registrationUrl()).isNull();
     }
 }

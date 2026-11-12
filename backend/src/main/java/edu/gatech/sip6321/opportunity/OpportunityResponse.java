@@ -13,4 +13,6 @@ public record OpportunityResponse(
         Instant eventStart,
         Instant eventEnd,
         String location,
-        Instant createdAt) {}
+        Instant createdAt,
+        RegistrationType registrationType,
+        String registrationUrl) {}

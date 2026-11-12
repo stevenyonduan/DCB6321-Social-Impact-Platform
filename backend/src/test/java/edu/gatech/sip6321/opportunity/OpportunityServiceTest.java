@@ -6,15 +6,19 @@ import static org.mockito.Mockito.*;
 import edu.gatech.sip6321.account.UserRole;
 import edu.gatech.sip6321.auth.*;
 import edu.gatech.sip6321.organization.OrganizationRepository;
-import java.time.Instant;
+import java.time.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.*;
 
 class OpportunityServiceTest {
     final ProfileService profiles = mock(ProfileService.class);
     final OrganizationRepository organizations = mock(OrganizationRepository.class);
     final EventRepository events = mock(EventRepository.class);
-    final OpportunityService service = new OpportunityService(profiles, organizations, events);
+    static final Instant NOW = Instant.parse("2027-01-01T00:00:00.123456789Z");
+    final Clock clock = spy(Clock.fixed(NOW, ZoneOffset.UTC));
+    final OpportunityService service =
+            new OpportunityService(profiles, organizations, events, clock);
     final List<String> headers = List.of("Bearer test-access");
     final UUID org = UUID.randomUUID();
 
@@ -138,6 +142,99 @@ class OpportunityServiceTest {
                                         Instant.EPOCH,
                                         end,
                                         "Atlanta"))
+                .isInstanceOf(OpportunityFailure.class);
+    }
+
+    private void manager() {
+        when(profiles.me(headers))
+                .thenReturn(
+                        new ProfileResponse(
+                                UUID.randomUUID(),
+                                "a@example.test",
+                                UserRole.ORGANIZATION,
+                                "A",
+                                "B",
+                                null,
+                                null,
+                                org,
+                                null));
+        when(organizations.existsById(org)).thenReturn(true);
+    }
+
+    @Test
+    void publishingBoundaryRejectsPastEqualAndSubMicrosecondStarts() {
+        manager();
+        for (Instant start : List.of(NOW.minusSeconds(1), NOW, NOW.plusNanos(1))) {
+            var request =
+                    new PublishOpportunityRequest(
+                            "Title", "Description", null, start, NOW.plusSeconds(3600), "Atlanta");
+            assertThatThrownBy(() -> service.publish(headers, request))
+                    .isInstanceOf(OpportunityFailure.class)
+                    .extracting("code")
+                    .isEqualTo("EVENT_START_NOT_FUTURE");
+        }
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void nextStoredMicrosecondIsFutureAndUsesServerClockOnce() {
+        manager();
+        var nextMicro = Instant.parse("2027-01-01T00:00:00.123457Z");
+        var request =
+                new PublishOpportunityRequest(
+                        "Title", "Description", null, nextMicro, NOW.plusSeconds(3600), "Atlanta");
+        when(events.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        assertThat(service.publish(headers, request).eventStart()).isEqualTo(nextMicro);
+        verify(clock).instant();
+    }
+
+    @Test
+    void listingCapturesOneCutoffAtStoredPrecisionForSqlPagination() {
+        manager();
+        var cutoff = Instant.parse("2027-01-01T00:00:00.123456Z");
+        when(events.findByOrganizationIdAndEventStartAfterOrderByEventStartAscIdAsc(
+                        org, cutoff, PageRequest.of(2, 3)))
+                .thenReturn(new SliceImpl<>(List.of(), PageRequest.of(2, 3), false));
+        assertThat(service.list(headers, org, 2, 3).items()).isEmpty();
+        verify(events)
+                .findByOrganizationIdAndEventStartAfterOrderByEventStartAscIdAsc(
+                        org, cutoff, PageRequest.of(2, 3));
+        verify(clock).instant();
+    }
+
+    @Test
+    void directRequestsCannotBypassRegistrationValidation() {
+        for (String url :
+                List.of(
+                        "https://example.org/" + (char) 0xD800,
+                        "https://example.org/" + (char) 0x0000,
+                        "javascript:alert(1)")) {
+            assertThatThrownBy(
+                            () ->
+                                    new PublishOpportunityRequest(
+                                            "Title",
+                                            "Description",
+                                            null,
+                                            NOW.plusSeconds(1),
+                                            NOW.plusSeconds(3600),
+                                            "Atlanta",
+                                            RegistrationType.EXTERNAL,
+                                            url))
+                    .isInstanceOf(OpportunityFailure.class)
+                    .extracting("code")
+                    .isEqualTo("INVALID_REGISTRATION");
+        }
+        assertThatThrownBy(
+                        () ->
+                                new PublishOpportunityRequest(
+                                        "Title",
+                                        "Description",
+                                        null,
+                                        NOW.plusSeconds(1),
+                                        NOW.plusSeconds(3600),
+                                        "Atlanta",
+                                        null,
+                                        null))
                 .isInstanceOf(OpportunityFailure.class);
     }
 }

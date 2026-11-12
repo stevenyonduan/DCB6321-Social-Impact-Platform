@@ -23,6 +23,18 @@ public final class OpportunityFailure extends RuntimeException {
                 400, "INVALID_REQUEST", "Check the opportunity fields and pagination parameters.");
     }
 
+    public static OpportunityFailure startNotFuture() {
+        return new OpportunityFailure(
+                400, "EVENT_START_NOT_FUTURE", "Event start must be strictly in the future.");
+    }
+
+    public static OpportunityFailure invalidRegistration() {
+        return new OpportunityFailure(
+                400,
+                "INVALID_REGISTRATION",
+                "Use INTERNAL without a URL or EXTERNAL with a valid HTTP(S) registration URL.");
+    }
+
     public static OpportunityFailure forbidden() {
         return new OpportunityFailure(403, "FORBIDDEN", "Opportunity publishing is not permitted.");
     }

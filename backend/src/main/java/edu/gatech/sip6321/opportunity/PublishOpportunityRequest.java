@@ -13,11 +13,21 @@ public record PublishOpportunityRequest(
         String imageUrl,
         Instant eventStart,
         Instant eventEnd,
-        String location) {
+        String location,
+        RegistrationType registrationType,
+        String registrationUrl) {
     private static final Instant MIN_TIMESTAMP = Instant.parse("-4713-11-24T00:00:00Z");
     private static final Instant END_TIMESTAMP = Instant.parse("+294277-01-01T00:00:00Z");
     private static final Set<String> FIELDS =
-            Set.of("title", "description", "imageUrl", "eventStart", "eventEnd", "location");
+            Set.of(
+                    "title",
+                    "description",
+                    "imageUrl",
+                    "eventStart",
+                    "eventEnd",
+                    "location",
+                    "registrationType",
+                    "registrationUrl");
 
     public PublishOpportunityRequest {
         text(title, true, true);
@@ -37,6 +47,12 @@ public record PublishOpportunityRequest(
                 throw OpportunityFailure.invalid();
             }
         }
+        if (registrationType == null) throw OpportunityFailure.invalidRegistration();
+        if (registrationType == RegistrationType.INTERNAL) {
+            if (registrationUrl != null) throw OpportunityFailure.invalidRegistration();
+        } else {
+            registrationUrl(registrationUrl);
+        }
         eventStart = timestamp(eventStart);
         eventEnd = timestamp(eventEnd);
         if (!eventEnd.isAfter(eventStart)) throw OpportunityFailure.invalid();
@@ -54,9 +70,77 @@ public record PublishOpportunityRequest(
                     value(node, "imageUrl"),
                     parse(value(node, "eventStart")),
                     parse(value(node, "eventEnd")),
-                    value(node, "location"));
+                    value(node, "location"),
+                    registrationType(node),
+                    value(node, "registrationUrl"));
         } catch (DateTimeException exception) {
             throw OpportunityFailure.invalid();
+        }
+    }
+
+    // Preserve the original Java construction contract with the same omission default as JSON/SQL.
+    public PublishOpportunityRequest(
+            String title,
+            String description,
+            String imageUrl,
+            Instant eventStart,
+            Instant eventEnd,
+            String location) {
+        this(
+                title,
+                description,
+                imageUrl,
+                eventStart,
+                eventEnd,
+                location,
+                RegistrationType.INTERNAL,
+                null);
+    }
+
+    private static RegistrationType registrationType(JsonNode node) {
+        if (!node.has("registrationType")) return RegistrationType.INTERNAL;
+        try {
+            String value = value(node, "registrationType");
+            if (value == null) throw OpportunityFailure.invalidRegistration();
+            return RegistrationType.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            throw OpportunityFailure.invalidRegistration();
+        }
+    }
+
+    private static void registrationUrl(String value) {
+        try {
+            text(value, true, false);
+            URI uri = URI.create(value);
+            if (!("https".equalsIgnoreCase(uri.getScheme())
+                            || "http".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getHost() == null
+                    || uri.getRawUserInfo() != null
+                    || uri.getRawAuthority().endsWith(":")
+                    || (uri.getPort() != -1 && (uri.getPort() < 1 || uri.getPort() > 65535)))
+                throw OpportunityFailure.invalidRegistration();
+            // Also reject percent-encoded controls/bidi formatting in decoded URI components.
+            for (String part :
+                    new String[] {
+                        value, uri.getAuthority(), uri.getPath(), uri.getQuery(), uri.getFragment()
+                    }) {
+                if (part != null
+                        && part.codePoints()
+                                .anyMatch(
+                                        c ->
+                                                Character.isISOControl(c)
+                                                        || Character.getType(c) == Character.FORMAT
+                                                        || Character.getType(c)
+                                                                == Character.LINE_SEPARATOR
+                                                        || Character.getType(c)
+                                                                == Character.PARAGRAPH_SEPARATOR
+                                                        || c == 0xfffd
+                                                        || (c >= 0xfdd0 && c <= 0xfdef)
+                                                        || (c & 0xfffe) == 0xfffe))
+                    throw OpportunityFailure.invalidRegistration();
+            }
+        } catch (IllegalArgumentException | OpportunityFailure exception) {
+            throw OpportunityFailure.invalidRegistration();
         }
     }
 

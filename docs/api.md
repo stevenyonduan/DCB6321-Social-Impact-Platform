@@ -5,9 +5,15 @@
 `POST /api/organizations/me/opportunities` returns 201 for a persisted ORGANIZATION manager.
 The server derives organizationId/creatorId; unknown fields are rejected.
 `GET /api/organizations/{organizationId}/opportunities?page=0&size=20` returns an authenticated
-paginated object ordered by event_start/id ascending, including past events. Page is 0–10000,
+paginated object ordered by event_start/id ascending, including upcoming events only. Page is 0–10000,
 size 1–100. See [opportunities](../backend/OPPORTUNITIES.md) for complete JSON/TypeScript contracts,
 validation, permissions, V003, tests, and manual deployment. ADMIN cannot publish.
+The approved PR #19 extension requires starts strictly after the injected backend clock and
+adds registrationType (INTERNAL default when omitted, or EXTERNAL) and registrationUrl (null
+for INTERNAL; required valid HTTP(S) destination for EXTERNAL) to creation/list responses.
+Explicit invalid/null types fail rather than default. SQL filters upcoming events before paging;
+historical rows remain stored. These are approved extensions to the original DDD, not original
+schema fields. V003 remains unapplied to Supabase and is updated in place; no V004 is needed.
 
 ## Subsequently approved authentication contracts
 

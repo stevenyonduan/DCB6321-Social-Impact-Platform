@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import edu.gatech.sip6321.account.*;
 import edu.gatech.sip6321.auth.*;
 import edu.gatech.sip6321.organization.OrganizationRepository;
+import java.time.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,10 +48,13 @@ class OpportunityControllerTest {
     @MockitoBean UserService users;
     @MockitoBean OrganizationRepository organizations;
     @MockitoBean EventRepository events;
+    @MockitoBean Clock clock;
+    static final Instant NOW = OpportunityServiceTest.NOW;
     User account;
 
     @BeforeEach
     void setup() {
+        when(clock.instant()).thenReturn(NOW);
         account = mock(User.class);
         when(account.getId()).thenReturn(USER);
         when(account.getRole()).thenReturn(UserRole.ORGANIZATION);
@@ -59,7 +63,8 @@ class OpportunityControllerTest {
         when(users.getById(USER)).thenReturn(account);
         when(organizations.existsById(ORG)).thenReturn(true);
         when(events.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(events.findByOrganizationIdOrderByEventStartAscIdAsc(eq(ORG), any()))
+        when(events.findByOrganizationIdAndEventStartAfterOrderByEventStartAscIdAsc(
+                        eq(ORG), any(), any()))
                 .thenReturn(new SliceImpl<>(List.of(), PageRequest.of(0, 20), false));
     }
 
@@ -186,12 +191,12 @@ class OpportunityControllerTest {
     }
 
     @Test
-    void allowsPastEventsLongDescriptionsUnicodeAndReferenceUrls() throws Exception {
+    void allowsFutureEventsLongDescriptionsUnicodeAndReferenceUrls() throws Exception {
         var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
         node.put("title", "😀".repeat(255));
         node.put("description", "x".repeat(40000));
-        node.put("eventStart", "2000-01-01T00:00:00Z");
-        node.put("eventEnd", "2000-01-01T01:00:00Z");
+        node.put("eventStart", "2027-02-01T00:00:00Z");
+        node.put("eventEnd", "2027-02-01T01:00:00Z");
         node.put("imageUrl", "https://example.test/image.png");
         mvc.perform(
                         post(POST)
@@ -199,7 +204,7 @@ class OpportunityControllerTest {
                                 .contentType("application/json")
                                 .content(json.writeValueAsString(node)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.eventStart").value("2000-01-01T00:00:00Z"));
+                .andExpect(jsonPath("$.eventStart").value("2027-02-01T00:00:00Z"));
     }
 
     @Test
@@ -214,7 +219,10 @@ class OpportunityControllerTest {
                     .andExpect(jsonPath("$.hasNext").value(false));
         }
         verify(events, times(3))
-                .findByOrganizationIdOrderByEventStartAscIdAsc(ORG, PageRequest.of(0, 20));
+                .findByOrganizationIdAndEventStartAfterOrderByEventStartAscIdAsc(
+                        ORG,
+                        NOW.truncatedTo(java.time.temporal.ChronoUnit.MICROS),
+                        PageRequest.of(0, 20));
     }
 
     @ParameterizedTest
@@ -305,6 +313,172 @@ class OpportunityControllerTest {
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
         mvc.perform(post(POST).content(BODY)).andExpect(status().isUnsupportedMediaType());
         verifyNoInteractions(auth, users, organizations, events);
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "2026-12-31T00:00:00Z",
+                "2027-01-01T00:00:00.123456789Z",
+                "2027-01-01T00:00:00.123456790Z"
+            })
+    void rejectsStartsNotFutureAtStoredPrecision(String start) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("eventStart", start);
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(json.writeValueAsString(node)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EVENT_START_NOT_FUTURE"))
+                .andExpect(
+                        jsonPath("$.message").value("Event start must be strictly in the future."));
+        verifyNoInteractions(events);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"INTERNAL", "EXTERNAL", "OMITTED"})
+    void returnsRegistrationConfigurationIncludingOmissionDefault(String type) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        if (!type.equals("OMITTED")) node.put("registrationType", type);
+        String url = type.equals("EXTERNAL") ? "https://example.org/volunteer/register" : null;
+        node.put("registrationUrl", url);
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(json.writeValueAsString(node)))
+                .andExpect(status().isCreated())
+                .andExpect(
+                        jsonPath("$.registrationType")
+                                .value(type.equals("EXTERNAL") ? "EXTERNAL" : "INTERNAL"))
+                .andExpect(jsonPath("$.registrationUrl").value(url));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"registrationType", "registrationUrl"})
+    void rejectsNonStringRegistrationFields(String field) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put(field, 123);
+        reject(json.writeValueAsString(node));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"UNKNOWN", "internal", "", " INTERNAL "})
+    void invalidExplicitTypesNeverDefaultToInternal(String type) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("registrationType", type);
+        rejectRegistration(json.writeValueAsString(node));
+    }
+
+    @Test
+    void rejectsExplicitNullTypeInternalUrlAndMissingExternalUrl() throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.putNull("registrationType");
+        rejectRegistration(json.writeValueAsString(node));
+        node.put("registrationType", "INTERNAL");
+        node.put("registrationUrl", "https://example.org");
+        rejectRegistration(json.writeValueAsString(node));
+        node.remove("registrationType");
+        rejectRegistration(json.writeValueAsString(node));
+        node.put("registrationType", "EXTERNAL");
+        node.remove("registrationUrl");
+        rejectRegistration(json.writeValueAsString(node));
+        node.putNull("registrationUrl");
+        rejectRegistration(json.writeValueAsString(node));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "",
+                " ",
+                "\t\n",
+                "javascript:alert(1)",
+                "data:text/plain,hello",
+                "file:///tmp/event",
+                "ftp://example.org",
+                "example.org/register",
+                "//example.org/register",
+                "https:///register",
+                "https://user:pass@example.org",
+                "https://example.org:0",
+                "https://example.org:65536",
+                "https://example.org:-1",
+                "https://example.org:",
+                "https://example.org:notaport",
+                "https://exa mple.org",
+                "https://example.org/%0d%0aHeader",
+                "https://example.org/%00",
+                "https://example.org/\u202Eevil",
+                "https://example.org/%E2%80%AEevil",
+                "https://example.org/\nregister",
+                "https://example.org/%FF",
+                "https://example.org/\u2028register",
+                "https://example.org/%EF%B7%90"
+            })
+    void rejectsUnsafeExternalUrls(String url) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("registrationType", "EXTERNAL");
+        node.put("registrationUrl", url);
+        rejectRegistration(json.writeValueAsString(node));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "http://example.org/register",
+                "https://xn--bcher-kva.example/volunteer%20signup/é",
+                "https://example.org:65535/register?event=1#signup",
+                "https://example.org/register/"
+            })
+    void permitsHttpAndHttpsReferencesWithoutVarcharLimit(String url) throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("registrationType", "EXTERNAL");
+        node.put("registrationUrl", url + "x".repeat(300));
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(json.writeValueAsString(node)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.registrationUrl").value(url + "x".repeat(300)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STANDARD", "ADMIN", "UNASSOCIATED"})
+    void externalRegistrationDoesNotGrantPublishingAuthority(String role) throws Exception {
+        if (role.equals("UNASSOCIATED")) when(account.getOrganizationId()).thenReturn(null);
+        else when(account.getRole()).thenReturn(UserRole.valueOf(role));
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("registrationType", "EXTERNAL");
+        node.put("registrationUrl", "https://example.org");
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(json.writeValueAsString(node)))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void rejectsClientSuppliedClock() throws Exception {
+        var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
+        node.put("currentTime", "2000-01-01T00:00:00Z");
+        reject(json.writeValueAsString(node));
+    }
+
+    private void rejectRegistration(String body) throws Exception {
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REGISTRATION"));
+        verifyNoInteractions(events);
     }
 
     private void reject(String body) throws Exception {

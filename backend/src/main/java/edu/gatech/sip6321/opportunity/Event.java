@@ -38,6 +38,13 @@ public class Event {
     @Column(nullable = false, length = 255)
     private String location;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "registration_type", nullable = false, length = 20)
+    private RegistrationType registrationType;
+
+    @Column(name = "registration_url", columnDefinition = "text")
+    private String registrationUrl;
+
     @Generated(event = EventType.INSERT)
     @Column(
             name = "created_at",
@@ -59,6 +66,8 @@ public class Event {
         event.eventStart = request.eventStart();
         event.eventEnd = request.eventEnd();
         event.location = request.location();
+        event.registrationType = request.registrationType();
+        event.registrationUrl = request.registrationUrl();
         return event;
     }
 
@@ -73,6 +82,8 @@ public class Event {
                 eventStart,
                 eventEnd,
                 location,
-                createdAt);
+                createdAt,
+                registrationType,
+                registrationUrl);
     }
 }

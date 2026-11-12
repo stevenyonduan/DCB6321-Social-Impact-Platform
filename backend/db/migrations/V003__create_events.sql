@@ -1,3 +1,4 @@
+-- Updated in unmerged PR #19: V003 has not been applied to Supabase.
 -- Apply manually once after V001/V002. Never rerun or edit applied migrations.
 -- NO ACTION preserves related records until deletion/update workflows are approved.
 BEGIN;
@@ -13,6 +14,15 @@ CREATE TABLE public.events (
     event_end TIMESTAMPTZ NOT NULL,
     location VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Newly approved PR #19 extensions, not original DDD columns.
+    registration_type VARCHAR(20) NOT NULL DEFAULT 'INTERNAL',
+    registration_url TEXT,
+    CONSTRAINT events_registration_type_check CHECK (registration_type IN ('INTERNAL', 'EXTERNAL')),
+    CONSTRAINT events_registration_url_check CHECK (
+        (registration_type = 'INTERNAL' AND registration_url IS NULL)
+        OR (registration_type = 'EXTERNAL' AND registration_url IS NOT NULL
+            AND registration_url ~ '[^[:space:]]')
+    ),
     CONSTRAINT events_pkey PRIMARY KEY (id),
     CONSTRAINT events_organization_fkey FOREIGN KEY (organization_id)
         REFERENCES public.organizations (id) ON UPDATE NO ACTION ON DELETE NO ACTION,

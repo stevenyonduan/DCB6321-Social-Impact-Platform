@@ -27,7 +27,11 @@ public class OpportunityExceptionHandler {
         HttpMessageNotReadableException.class,
         MethodArgumentTypeMismatchException.class
     })
-    ResponseEntity<SignupExceptionHandler.Error> invalid(Exception ignored) {
+    ResponseEntity<SignupExceptionHandler.Error> invalid(Exception exception) {
+        // Jackson wraps DTO validation; preserve only our fixed public messages, never parser text.
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof OpportunityFailure failure) return failure(failure);
+        }
         return failure(OpportunityFailure.invalid());
     }
 

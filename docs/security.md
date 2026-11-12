@@ -49,8 +49,15 @@ policy: only a persisted ORGANIZATION account with an existing associated organi
 publish. Both organization and creator IDs derive from the verified account; protected fields
 are rejected. ADMIN has no override, and is_verified is not a publication prerequisite. Any
 authenticated application account may list an organization’s events. V003 enables events RLS,
-revokes browser-role privileges and adds no browser policies. Broader ADMIN/verification and
-D06 Storage permissions remain open.
+revokes browser-role privileges and adds no browser policies. Registration type does not change any permission. The approved
+PR #19 extension validates future starts against an injected server clock, rejects client time,
+and lists only upcoming events in SQL while retaining historical rows. EXTERNAL registration
+URLs are untrusted references: the API validates absolute HTTP(S), host, credentials, ports, and
+unsafe control/Unicode characters without fetching or granting volunteer-data access. HTTP is
+permitted; HTTPS is recommended. A future frontend must show the destination domain, use safe
+external links, avoid automatic redirects and transmitting tokens/sensitive data, and never count
+a link click as registration. INTERNAL is the omission default; no RSVP/registration records or
+provider integrations are implemented. Broader ADMIN/verification and D06 Storage policy remain open.
 
 ## Data privacy and moderation
 

@@ -155,12 +155,25 @@ Organization-created volunteer opportunities. Source: DDD p. 16.
 | created_at | TIMESTAMPTZ | No | Default NOW() |
 
 The subsequently approved [opportunity publishing ticket](../backend/OPPORTUNITIES.md) implements
-these ten fields through additive V003. For this bounded D02 resolution, creator_id records the
+the original ten fields through V003, plus the two newly approved PR #19 extension fields below. For this bounded D02 resolution, creator_id records the
 authenticated ORGANIZATION manager; ADMIN has no publishing authority. V003 uses gen_random_uuid()
 as the SQL UUID default, database-generated created_at, NO ACTION foreign keys, RLS with browser
 privileges revoked, and an organization/start/id index. Nonblank required text and strictly
-increasing start/end at microsecond precision are adopted API rules. Past events are accepted
-and listed. No capacity, status, event-interest junction or recurrence fields are added.
+increasing start/end at microsecond precision are adopted API rules. The newly approved update
+requires a strictly future start against an injectable server Clock and lists upcoming events
+only using a SQL predicate before pagination; historical events are retained. No capacity, status, event-interest junction or recurrence fields are added.
+
+Newly approved extensions to the DDD for PR #19 (not original Figure 14 fields):
+
+| Column | PostgreSQL type | Nullable | Keys, defaults and constraints |
+| --- | --- | --- | --- |
+| registration_type | VARCHAR(20) | No | Default INTERNAL; allowed INTERNAL/EXTERNAL |
+| registration_url | TEXT | Yes | Must be null for INTERNAL; non-null/nonblank for EXTERNAL |
+
+`events_registration_type_check` and `events_registration_url_check` enforce valid combinations;
+the API additionally validates external HTTP(S) URLs. V003 is updated directly because the owner
+confirms it has not been applied to Supabase. V001/V002, event keys/FKs, RLS/browser revocations,
+and the organization/start/id index remain unchanged. No event registration rows are created.
 
 ## event_registrations
 

@@ -5,6 +5,18 @@ volunteer opportunities. It reuses Supabase Auth identity verification, persiste
 roles, `users.organization_id`, and the existing organization model. No frontend code changes,
 production migration, deployment, or new infrastructure are included.
 
+## Approved PR #19 extensions
+
+The owner approved future-only publishing/upcoming-only listing and INTERNAL/EXTERNAL registration
+configuration as extensions to the original DDD. They supersede the initial PR's permissive past
+publication and inclusive listing policy. The original DDD has ten event columns; the two
+registration columns below are newly approved, not a transcription of that document.
+
+The owner confirms V003 has **not** been applied to Supabase. This unmerged PR updates V003 in
+place; no V004 is created. No live database was contacted to make that determination. If another
+environment has already applied an older V003, stop and review its migration history rather than
+rerunning/replacing that applied version or dropping its table.
+
 ## Schema and migration
 
 [V003__create_events.sql](db/migrations/V003__create_events.sql) creates `public.events` after
@@ -23,12 +35,19 @@ Supabase SQL Editor only after the operator checks below. No automatic migration
 | event_end | TIMESTAMPTZ | Required |
 | location | VARCHAR(255) | Required |
 | created_at | TIMESTAMPTZ | Required; database default NOW() |
+| registration_type | VARCHAR(20) | Newly approved; NOT NULL, default INTERNAL |
+| registration_url | TEXT | Newly approved; nullable only for INTERNAL |
 
 JPA generates UUID v4 IDs, as for organizations; direct SQL inserts can use the SQL UUID default.
 Hibernate reads the database-generated created_at back after insert. The organization and creator
 UUIDs are scalar entity properties backed by foreign keys, following the existing account model.
-Both foreign keys use ON UPDATE/DELETE NO ACTION. No cascades, status, capacity, or other columns
-are added. The `(organization_id,event_start,id)` index supports the list predicate and stable sort.
+Both foreign keys use ON UPDATE/DELETE NO ACTION. No cascades, status, or capacity are added.
+The existing `(organization_id,event_start,id)` index supports organization equality, the upcoming
+start-time range predicate, and stable ordering; no index change is necessary.
+`events_registration_type_check` restricts the type to INTERNAL/EXTERNAL;
+`events_registration_url_check` requires INTERNAL URLs to be null and EXTERNAL URLs to be non-null
+with at least one non-whitespace character (PostgreSQL POSIX whitespace). URL structure is additionally
+validated by the API. These CHECK constraints apply to direct SQL as well as API writes.
 V003 enables RLS, revokes all PUBLIC/anon/authenticated privileges, and creates no browser policies.
 Nonblank text and end-after-start are API validation rules, not additional SQL CHECK constraints.
 
@@ -74,7 +93,9 @@ Accept: application/json
   "eventStart": "2027-01-16T09:00:00-05:00",
   "eventEnd": "2027-01-16T12:00:00-05:00",
   "location": "Piedmont Park, Atlanta, GA",
-  "imageUrl": null
+  "imageUrl": null,
+  "registrationType": "INTERNAL",
+  "registrationUrl": null
 }
 ```
 
@@ -91,9 +112,49 @@ Accept: application/json
   "eventStart": "2027-01-16T14:00:00Z",
   "eventEnd": "2027-01-16T17:00:00Z",
   "location": "Piedmont Park, Atlanta, GA",
-  "createdAt": "2026-11-12T15:00:00Z"
+  "createdAt": "2026-11-12T15:00:00Z",
+  "registrationType": "INTERNAL",
+  "registrationUrl": null
 }
 ```
+
+For an EXTERNAL opportunity, send the same endpoint with (illustrative future dates):
+
+```json
+{
+  "title": "Habitat Build Day",
+  "description": "Help build homes with our team.",
+  "location": "Atlanta, GA",
+  "eventStart": "2027-01-23T08:00:00-05:00",
+  "eventEnd": "2027-01-23T15:00:00-05:00",
+  "imageUrl": null,
+  "registrationType": "EXTERNAL",
+  "registrationUrl": "https://www.example.org/volunteer/register"
+}
+```
+
+The 201 response and every subsequent list item include the saved registration fields:
+
+```json
+{
+  "id": "608581ea-0a4a-4c6b-a334-92dcfa539c79",
+  "organizationId": "a975e6c1-38b9-438a-a798-12741f117870",
+  "creatorId": "943fba2c-cc41-457d-b2b3-3d376aa3a992",
+  "title": "Habitat Build Day",
+  "description": "Help build homes with our team.",
+  "location": "Atlanta, GA",
+  "eventStart": "2027-01-23T13:00:00Z",
+  "eventEnd": "2027-01-23T20:00:00Z",
+  "imageUrl": null,
+  "createdAt": "2026-11-12T15:00:00Z",
+  "registrationType": "EXTERNAL",
+  "registrationUrl": "https://www.example.org/volunteer/register"
+}
+```
+
+Choose dates strictly after the backend clock when trying these examples. They are not permanent
+future fixtures. Omitting registrationType defaults to INTERNAL; registrationUrl must then be
+absent/null. Explicit null, unknown, differently cased, or non-string types are rejected.
 
 No Location header is emitted: this ticket has no individual-event GET resource. The creation
 response contains the complete saved event; reload through the list endpoint.
@@ -105,7 +166,7 @@ Accept: application/json
 ```
 
 200 OK, `Cache-Control: no-store`. The list is a paginated object, with each item using exactly
-the same response shape as creation. For an organization with no opportunities:
+the same response shape as creation. For an organization with no upcoming opportunities:
 
 ```json
 {"items": [], "page": 0, "size": 20, "hasNext": false}
@@ -120,16 +181,27 @@ than an empty list. Malformed UUIDs and invalid pagination values return 400.
 - Zero-based `page` defaults to 0, allowed 0–10000. `size` defaults to 20, allowed 1–100.
   Reads use a database Slice (at most size + 1 rows fetched); no full-table result or count query.
   The maximum offset is 1,000,000. Beyond the available rows, items is empty and hasNext is false.
-- Order is `event_start ASC, id ASC`. Past and future events are both included, earliest first;
-  past events can therefore precede upcoming events. This avoids a time-dependent sort boundary.
-  Equal starts use UUID order as a stable tie-breaker. Under static data, advancing page with the
-  same size yields no duplicates or omissions. Concurrent inserts can shift offset pages; reload
-  from page 0 to refresh. No snapshot or cursor consistency guarantee is made.
-- Past events may be published and remain visible. No implicit current-time restriction or filter
-  is added. A successfully created event is immediately available; there is no draft workflow.
-- Only title, description, location, eventStart, eventEnd, and optional imageUrl are accepted.
-  Unknown fields, including organizationId, creatorId, id, createdAt, role, and status, return 400.
-  Required fields cannot be missing/null; values must be JSON strings, without scalar coercion.
+- The PostgreSQL query is organization-scoped and uses `event_start > :now` **before** applying
+  offset/limit, ordered by `event_start ASC, id ASC`. INTERNAL and EXTERNAL appear together.
+  Past events and events starting exactly at the cutoff are excluded. Historical rows remain
+  stored; there is no deletion job and no historical retrieval endpoint in this ticket.
+- Each list request captures the injected server Clock once. It floors that instant to microseconds
+  for the SQL parameter, avoiding JDBC rounding away a valid next-microsecond event. Because stored
+  starts have microsecond precision, `start > floor(now)` and `start > now` select the same rows.
+  The same cutoff applies to the entire Slice (including its extra hasNext row).
+- Each page request captures a new instant. Pagination is stable for unchanged data and cutoff;
+  time passing or concurrent inserts can shift offset pages. There is no cross-request snapshot
+  guarantee. Historical retrieval and cursor/snapshot pagination remain separate features.
+- Publishing captures the injected backend `Clock.systemUTC()` after account/organization checks.
+  A normalized start must be strictly later than that full-precision clock instant, including for
+  direct service calls. A start equal to now is rejected; no client currentTime is accepted.
+  A start only one nanosecond later can truncate to the current/past microsecond and is rejected;
+  the next representable microsecond is accepted if still future when the service validates it.
+  No minimum scheduling lead time is introduced. Events may age between publication and listing.
+- Only title, description, location, eventStart, eventEnd, imageUrl, registrationType, registrationUrl
+  are accepted. Unknown fields, including organizationId, creatorId, id, createdAt, role, status,
+  and client-provided currentTime, return 400. Required fields cannot be missing/null; JSON strings
+  are required without scalar coercion. The sole omission default is registrationType=INTERNAL.
 - Title, description, and location must be nonblank. Title, location, and optional imageUrl fit
   255 Unicode code points (PostgreSQL VARCHAR semantics). Description has no invented length cap.
   Text is preserved without trimming; NUL and unpaired Unicode surrogates are rejected.
@@ -147,6 +219,30 @@ than an empty list. Malformed UUIDs and invalid pagination values return 400.
   Unicode DNS names must use punycode. The API never fetches or verifies image bytes/availability,
   uploads files, or configures Storage. A URL is a reference only; D06 Storage policy remains open.
 
+## Registration configuration and external destinations
+
+- INTERNAL: registrationUrl must be absent or null. Any non-null value, including an empty string,
+  is rejected. Omitted registrationType defaults to INTERNAL in JSON, Java's original six-argument
+  request constructor, and the SQL default. Explicit null/invalid types never silently default.
+- EXTERNAL: registrationUrl is required, nonblank, and an absolute HTTP(S) URI with an ASCII DNS
+  host or IP literal, no embedded credentials, and an optional numeric port in 1–65535. HTTPS is
+  recommended; HTTP is permitted for compatibility. Empty ports, relative/protocol-relative URLs,
+  unsafe schemes, NUL/unpaired surrogates, controls, line/paragraph separators, bidi/format characters, Unicode noncharacters,
+  and invalid UTF-8 escapes are rejected. Controls/format characters in decoded URI components
+  (including percent-encoded CR/LF) are also rejected. Unicode hostnames must use punycode; valid
+  Unicode paths are allowed. Values are preserved without trimming and have no VARCHAR(255) cap
+  because registration_url is TEXT. Image URL validation remains separate and unchanged.
+- The backend never fetches/visits/scrapes URLs or verifies ownership, safety of the destination,
+  or registration completion. The link is untrusted organization-supplied data and grants no
+  account/volunteer access. Both registration types use identical publication authorization.
+- Future frontend: display the destination domain clearly, require a deliberate click, use safe
+  external-link handling (`target="_blank"` with `rel="noopener noreferrer"` where appropriate),
+  and never redirect automatically on opportunity load. Do not append access tokens, personal
+  information, or other sensitive user data to destination URLs. Avoid leaking sensitive referrers.
+  A link click is not a confirmed registration. INTERNAL may later show “Sign Up”; EXTERNAL may
+  show “Register on Organization Site”. No buttons/UI, RSVP endpoints, event registration rows,
+  or external-provider integration are implemented by this update.
+
 ## Errors
 
 All mapped errors use `{"code":"STABLE_CODE","message":"Safe message."}` and no-store.
@@ -156,7 +252,9 @@ existing organization API. Structurally valid unauthenticated requests return 40
 
 | HTTP | Code | Meaning |
 | --- | --- | --- |
-| 400 | INVALID_REQUEST | Invalid body, unknown field, value, UUID, or pagination |
+| 400 | INVALID_REQUEST | Invalid body, unknown field, value, timestamp, UUID, or pagination |
+| 400 | EVENT_START_NOT_FUTURE | Normalized start is not strictly after the server clock |
+| 400 | INVALID_REGISTRATION | Invalid type, type/URL combination, or external destination |
 | 401 | UNAUTHORIZED | Missing/malformed/invalid/expired Bearer; WWW-Authenticate: Bearer |
 | 403 | FORBIDDEN | Publishing role/association denied |
 | 404 | ORGANIZATION_NOT_FOUND | Requested or associated organization absent |
@@ -180,6 +278,8 @@ type PublishOpportunityRequest = {
   eventStart: string; // ISO-8601 with offset or Z
   eventEnd: string;
   imageUrl?: string | null;
+  registrationType?: 'INTERNAL' | 'EXTERNAL'; // omitted => INTERNAL; explicit null is invalid
+  registrationUrl?: string | null; // required for EXTERNAL, absent/null for INTERNAL
 };
 type Opportunity = {
   id: string;
@@ -192,6 +292,8 @@ type Opportunity = {
   eventStart: string; // ISO-8601 UTC
   eventEnd: string;
   createdAt: string;
+  registrationType: 'INTERNAL' | 'EXTERNAL';
+  registrationUrl: string | null;
 };
 type OpportunityPage = {
   items: Opportunity[];
@@ -217,6 +319,52 @@ const response = await fetch(`${base}/organizations/me/opportunities`, {
 // uses the same Bearer/Accept headers and returns OpportunityPage.
 ```
 
+## Final V003 SQL for manual review
+
+This is the complete current migration, mirrored from [V003](db/migrations/V003__create_events.sql).
+Apply it once only after reviewing the procedure below; V001/V002 are unchanged.
+
+```sql
+-- Updated in unmerged PR #19: V003 has not been applied to Supabase.
+-- Apply manually once after V001/V002. Never rerun or edit applied migrations.
+-- NO ACTION preserves related records until deletion/update workflows are approved.
+BEGIN;
+
+CREATE TABLE public.events (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    creator_id UUID NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    image_url VARCHAR(255),
+    event_start TIMESTAMPTZ NOT NULL,
+    event_end TIMESTAMPTZ NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Newly approved PR #19 extensions, not original DDD columns.
+    registration_type VARCHAR(20) NOT NULL DEFAULT 'INTERNAL',
+    registration_url TEXT,
+    CONSTRAINT events_registration_type_check CHECK (registration_type IN ('INTERNAL', 'EXTERNAL')),
+    CONSTRAINT events_registration_url_check CHECK (
+        (registration_type = 'INTERNAL' AND registration_url IS NULL)
+        OR (registration_type = 'EXTERNAL' AND registration_url IS NOT NULL
+            AND registration_url ~ '[^[:space:]]')
+    ),
+    CONSTRAINT events_pkey PRIMARY KEY (id),
+    CONSTRAINT events_organization_fkey FOREIGN KEY (organization_id)
+        REFERENCES public.organizations (id) ON UPDATE NO ACTION ON DELETE NO ACTION,
+    CONSTRAINT events_creator_fkey FOREIGN KEY (creator_id)
+        REFERENCES public.users (id) ON UPDATE NO ACTION ON DELETE NO ACTION
+);
+
+-- Supports organization-scoped, stable chronological pagination without a full-table sort.
+CREATE INDEX events_organization_start_id_idx ON public.events (organization_id, event_start, id);
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.events FROM PUBLIC, anon, authenticated;
+-- No browser policies. Review backend JDBC grants and RLS access separately.
+COMMIT;
+```
+
 ## Manual Supabase procedure and SQL verification
 
 1. Confirm the intended project and source revision. V001 and V002 must already be applied.
@@ -237,7 +385,20 @@ ORDER BY ordinal_position;
 
 SELECT conname, convalidated, pg_get_constraintdef(oid)
 FROM pg_constraint WHERE conrelid='public.events'::regclass ORDER BY conname;
--- Expect events_pkey plus validated organization/creator FKs, NO ACTION update/delete.
+-- Expect events_pkey, validated organization/creator FKs (NO ACTION),
+-- events_registration_type_check and events_registration_url_check.
+SELECT column_name, data_type, character_maximum_length, is_nullable, column_default
+FROM information_schema.columns WHERE table_schema='public' AND table_name='events'
+AND column_name IN ('registration_type','registration_url');
+-- registration_type: character varying(20), NOT NULL, default INTERNAL.
+-- registration_url: text, nullable.
+SELECT registration_type, count(*) FROM public.events GROUP BY registration_type;
+SELECT count(*) AS invalid_registration_rows FROM public.events
+WHERE registration_type NOT IN ('INTERNAL','EXTERNAL') OR registration_type IS NULL
+   OR (registration_type='INTERNAL' AND registration_url IS NOT NULL)
+   OR (registration_type='EXTERNAL' AND
+       (registration_url IS NULL OR registration_url !~ '[^[:space:]]'));
+-- Expect zero invalid rows; do not insert production test records for these checks.
 
 SELECT relrowsecurity FROM pg_class WHERE oid='public.events'::regclass;
 -- true
@@ -282,9 +443,12 @@ SELECT tableowner FROM pg_tables WHERE schemaname='public' AND tablename='events
    team's normal Render process. Do not enable SQL/bind/body/Authorization logging.
 4. With an authorized development ORGANIZATION account already associated with an organization,
    obtain a current token through existing login. Send POST and expect 201 with generated id,
-   creatorId, organizationId, createdAt. GET that organization and verify the id appears; repeat
+   creatorId, organizationId, createdAt, registrationType, registrationUrl. Test both INTERNAL and
+   EXTERNAL with future dates. GET that organization and verify both IDs/configurations appear; repeat
    GET to verify persistence. GET a separate empty organization and verify it does not appear.
-   STANDARD/ADMIN publication must be 403; missing/expired token 401. Avoid production test data.
+   STANDARD/ADMIN publication must be 403; missing/expired token 401. Past/equal starts and invalid
+   registration combinations must be 400 without new rows. Advancing test clocks/historical fixture
+   insertion belongs only in disposable tests. Avoid production test data.
    Health checks alone do not exercise database permissions. No accounts are provisioned by this API.
 5. Vercel needs no change or redeployment for this backend ticket. A future frontend uses the
    current Supabase bearer access token and `VITE_API_BASE_URL=https://YOUR-SERVICE.onrender.com/api`
@@ -311,8 +475,9 @@ ordinary backend verify; PostgreSQL integration tests require the explicit Maven
 D02 is resolved only for this ticket: ORGANIZATION managers create events and are recorded as
 creator, superseding the DDD's ambiguous admin-creator wording for this operation. ADMIN publishing
 and organization verification gating remain unapproved. D06 image storage/access/expiry policy
-remains open. Past publication, inclusive chronological listing, pagination, and end-after-start
-are the explicit bounded API choices documented above. The referenced docs/development-decisions.md
+remains open. Future-only publication/upcoming-only listing, registration configuration/defaults,
+HTTP URL compatibility, pagination, and end-after-start are explicit bounded API choices approved
+for this update. Historical event reads and actual registration behavior remain separate work. The referenced docs/development-decisions.md
 register is absent in this checkout; no contents or broader decisions are invented for it.
 
 Not implemented: RSVP/registration, following, event edit/delete/cancellation, hours, recommendations,
@@ -321,7 +486,28 @@ GET /organizations/me/opportunities, or retry/idempotency guarantees. Repeating 
 creates another event; clients should avoid automatic retries after uncertain outcomes. General
 request rate/body limits and stronger pagination under concurrent inserts remain future work.
 
-## Change inventory
+## PR #19 update coverage and file inventory
+
+The extension updates Event, EventRepository, OpportunityFailure, OpportunityResponse,
+OpportunityService, PublishOpportunityRequest, and OpportunityExceptionHandler in the existing
+opportunity package; adds RegistrationType and OpportunityConfiguration (UTC Clock bean); modifies
+OpportunityControllerTest, OpportunityServiceTest, and OpportunityPersistenceIT; updates only
+V003, this guide, root README, docs/api.md, docs/data-model.md, and docs/security.md. Existing
+controllers, request filter, organization/Auth/account code, V001/V002, frontend, CI, and build
+configuration remain unchanged. No separate implementation or V004 is added.
+
+Tests now use a fixed injected clock, including direct service calls and MVC/PostgreSQL flows.
+They cover rejection of past/equal/sub-microsecond starts without writes, the next representable
+future microsecond, UTC offset normalization, end-after-start, SQL filtering before pagination,
+aging events remaining stored, stable ordering and organization isolation. Registration coverage
+includes omission defaults, explicit INTERNAL/EXTERNAL, invalid/null types, URL combinations,
+malformed/unsafe/credential-bearing URLs, ports, Unicode/controls, URLs longer than VARCHAR(255),
+SQL defaults/CHECKs/nullability, response fields, and unchanged role/ownership authorization.
+The central PostgreSQL acceptance flow publishes INTERNAL and EXTERNAL as A, reloads their stored
+registration configuration, lists both for A and neither for B, then rejects past and STANDARD
+publication without changing any existing rows. It creates no event registration records.
+
+## Original PR change inventory
 
 Added under `src/main/java/edu/gatech/sip6321/opportunity/`: `Event.java`,
 `EventRepository.java`, `PublishOpportunityRequest.java`, `OpportunityResponse.java`,
@@ -333,7 +519,7 @@ Added matching `OpportunityControllerTest.java`, `OpportunityServiceTest.java`, 
 Also added this guide and V003; updated root README and docs/api, data-model, architecture, security.
 Existing Auth/account/organization Java, V001/V002, frontend code, build files, and CI are unchanged.
 
-## Verification record — November 12, 2026
+## Historical verification record — initial PR, before the future-only/registration update
 
 Final verification used Temurin JDK 21.0.5, Node 24.13.0, and disposable PostgreSQL 17 containers.
 
@@ -343,7 +529,7 @@ Final verification used Temurin JDK 21.0.5, Node 24.13.0, and disposable Postgre
 | `./mvnw -Ppostgres-it verify` | 349 passed | 35 passed | BUILD SUCCESS |
 
 All final runs had zero failures, errors, or skips. Spotless and executable JAR packaging passed.
-The new tests contribute 51 ordinary tests and 8 PostgreSQL tests. The central acceptance test
+The initial PR tests contributed 51 ordinary tests and 8 PostgreSQL tests. The central acceptance test
 published through MVC, verified the SQL row and a fresh JPA reload, listed it as STANDARD and both
 organization managers, proved another organization's list excluded it, and rejected STANDARD
 publication without changing database rows. The new migration preserved existing account and
@@ -365,3 +551,36 @@ Tracked/staged whitespace checks, whitespace review of all 15 new files, new loc
 links, and changed-file credential review passed. Historical references to the absent decision
 register/readiness report remain unresolved. No live Supabase migration or production data access,
 Render/Vercel deployment, credential changes, account provisioning, commit, push, or merge occurred.
+
+## Verification record — PR #19 future-only/registration update
+
+Verified on November 12, 2026 with Temurin JDK 21.0.5 and disposable PostgreSQL 17 containers:
+
+| Command from backend/ | Ordinary tests | PostgreSQL tests | Result |
+| --- | --- | --- | --- |
+| `./mvnw -Dtest=OpportunityControllerTest,OpportunityServiceTest test` | 101 passed | Not requested | BUILD SUCCESS |
+| `./mvnw verify` | 399 passed | Not requested | BUILD SUCCESS |
+| `./mvnw -Ppostgres-it verify` | 399 passed | 39 passed | BUILD SUCCESS |
+
+All final runs had zero failures, errors, or skips; formatting and executable JAR packaging passed.
+The opportunity package contributes 92 controller tests, 9 service tests, and 12 PostgreSQL tests.
+Existing account/Auth/profile/organization regressions passed. The central acceptance criteria
+remain satisfied for both future INTERNAL and future EXTERNAL opportunities, including stored
+creator/organization identity, registration fields returned at creation and subsequent listing,
+isolation from another organization, and rejection without writes for past/unauthorized submissions.
+
+An initial targeted run executed 97 tests with 29 failures: registration DTO errors were wrapped
+by Jackson and mapped to generic INVALID_REQUEST, causing the more specific error-code assertions
+to fail; failed-request test output also affected the log-sanitization assertion. The handler now
+unwraps only fixed application OpportunityFailure messages, without exposing parser/URL values.
+After the fix and additional Unicode/direct-call coverage, all final commands above passed.
+Backend tests used local test permissions for Mockito, HTTP test servers, and Docker. No remaining
+environmental limitation prevented the requested checks. Frontend code did not change, so frontend
+verification was not rerun for this update; its prior results above are historical only.
+
+The V003 SQL embedded in this guide exactly matches the migration file. Changed/new-file
+whitespace and credential-pattern review, tracked/staged diff checks, and new local documentation
+links passed. Historical missing decision-register/readiness-report references remain unresolved.
+V001/V002, event PK/FKs/RLS/revocations/index, existing authentication/organization services,
+frontend, CI, and build configuration are unchanged. No live Supabase access/migration, production
+credentials/data changes, Render/Vercel deployment, commit, push, merge, or remote PR edits occurred.
