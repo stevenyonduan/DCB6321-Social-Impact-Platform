@@ -57,6 +57,7 @@ export default function App() {
       </a>
       <Header
         page={visiblePage}
+        signedIn={state.status === 'ready'}
         onLogout={() => {
           void logout().then(() => navigate('landing'));
         }}
@@ -102,7 +103,17 @@ export default function App() {
           <Home name={state.profile.firstName} />
         )}
         {visiblePage === 'profile' && state.status === 'ready' && (
-          <ProfilePage profile={state.profile} />
+          <ProfilePage
+            key={state.profile.id}
+            profile={state.profile}
+            accessToken={state.accessToken}
+            onUnauthorized={expireSession}
+            onRefresh={retry}
+            onOrganizationCreated={(id) => {
+              retry();
+              navigate(`organizations/${id}`);
+            }}
+          />
         )}
         {isOrganizationPage(visiblePage) && state.status === 'ready' && (
           <OrganizationPage

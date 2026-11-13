@@ -566,10 +566,6 @@ input::placeholder {
 .profile-empty {
   color: var(--muted);
 }
-.my-organization {
-  margin-top: 16px;
-  text-decoration: underline;
-}
 .organization-intro {
   justify-content: space-between;
   flex-wrap: wrap;
@@ -590,6 +586,9 @@ input::placeholder {
 }
 .organization-website svg {
   vertical-align: middle;
+}
+.create-organization-link:hover {
+  text-decoration: none;
 }
 .organization-wide {
   grid-column: 1 / -1;
@@ -614,6 +613,24 @@ input::placeholder {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+.create-organization-dialog fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.create-organization-dialog textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+.create-organization-dialog .organization-form-actions {
+  justify-content: flex-end;
+}
+.dialog-cancel {
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--green);
 }
 .feed-layout {
   display: grid;
