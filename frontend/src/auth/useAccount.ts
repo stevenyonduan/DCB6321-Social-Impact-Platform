@@ -205,6 +205,11 @@ export function useAccount() {
     signIn,
     logout,
     expireSession,
-    retry: () => setRetry((value) => value + 1),
+    retry: () => {
+      ++epoch.current;
+      request.current?.abort();
+      setState({ status: 'loading' });
+      setRetry((value) => value + 1);
+    },
   };
 }

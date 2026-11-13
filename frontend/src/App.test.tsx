@@ -91,6 +91,23 @@ function restore() {
 }
 
 describe('organization profile', () => {
+  it.each(['/profile', organizationPath])(
+    'opens the feed when a signed-in user clicks the logo from %s',
+    async (path) => {
+      restore();
+      window.history.replaceState(null, '', path);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(json(organization));
+      render(<App />);
+      await userEvent.click(
+        await screen.findByRole('link', { name: 'SOW feed' }),
+      );
+      expect(window.location.pathname).toBe('/home');
+      expect(screen.getByRole('heading', { name: /Hi, Sam/ })).toBeTruthy();
+    },
+  );
+
   it.each([
     [404, 'ORGANIZATION_NOT_FOUND', 'Organization not found.'],
     [401, 'UNAUTHORIZED', 'Your session has expired. Please log in again.'],
@@ -143,10 +160,11 @@ describe('organization profile', () => {
         json({ ...profile, role: 'ORGANIZATION', organizationId }),
       )
       .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json(organization))
       .mockResolvedValueOnce(json({ ...organization, website: null }));
     render(<App />);
     await userEvent.click(
-      await screen.findByRole('link', { name: 'My organization' }),
+      await screen.findByRole('link', { name: organization.name }),
     );
     expect(window.location.pathname).toBe(organizationPath);
     await userEvent.click(
@@ -168,6 +186,98 @@ describe('organization profile', () => {
         }),
       }),
     );
+  });
+
+  it('creates an organization from Account details and opens it with owner controls', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization, 201))
+      .mockResolvedValueOnce(
+        json({ ...profile, role: 'ORGANIZATION', organizationId }),
+      )
+      .mockResolvedValueOnce(json(organization));
+    render(<App />);
+    const details = await screen.findByRole('region', {
+      name: 'Account details',
+    });
+    expect(within(details).getByText('My organization')).toBeTruthy();
+    await userEvent.click(
+      within(details).getByRole('button', { name: 'Create organization' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Create organization' }),
+    );
+    await userEvent.type(
+      dialog.getByLabelText(/Organization name/),
+      organization.name,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Create organization' }),
+    );
+    await screen.findByRole('button', { name: 'Edit profile' });
+    expect(window.location.pathname).toBe(organizationPath);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/organizations',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: organization.name,
+          description: null,
+          website: null,
+        }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/users/me',
+      expect.anything(),
+    );
+  });
+
+  it('refreshes the linked organization after a creation conflict without posting twice', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({ code: 'ORGANIZATION_ALREADY_ASSOCIATED' }, 409),
+      )
+      .mockResolvedValueOnce(
+        json({ ...profile, role: 'ORGANIZATION', organizationId }),
+      )
+      .mockResolvedValueOnce(json(organization));
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Create organization' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Create organization' }),
+    );
+    await userEvent.type(
+      dialog.getByLabelText(/Organization name/),
+      organization.name,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Create organization' }),
+    );
+    expect((await dialog.findByRole('alert')).textContent).toContain(
+      'already linked',
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Refresh profile' }),
+    );
+    await screen.findByRole('link', { name: organization.name });
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([, options]) => options?.method === 'POST'),
+    ).toHaveLength(1);
   });
 
   it('keeps the draft after a failed save and hides editing when permission is denied', async () => {
