@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import edu.gatech.sip6321.account.UserRole;
 import edu.gatech.sip6321.account.UserService;
 import edu.gatech.sip6321.auth.SupabaseAuthClient;
 import java.nio.file.Files;
@@ -14,6 +15,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -106,6 +110,72 @@ class OrganizationPersistenceIT {
                 organization,
                 id);
         return id;
+    }
+
+    @Test
+    void concurrentCreationAssignsExactlyOneOrganizationAndEnablesEditing() throws Exception {
+        UUID creator = account("STANDARD", null);
+        when(auth.verifyAccessToken("isolated-access")).thenReturn(creator);
+        var start = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Integer> create =
+                    () -> {
+                        start.await(10, TimeUnit.SECONDS);
+                        return mvc.perform(
+                                        post("/api/organizations")
+                                                .header("Authorization", "Bearer isolated-access")
+                                                .contentType("application/json")
+                                                .content("{\"name\":\"Garden\"}"))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus();
+                    };
+            var first = executor.submit(create);
+            var second = executor.submit(create);
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+        var owner = users.getById(creator);
+        assertThat(owner.getRole()).isEqualTo(UserRole.ORGANIZATION);
+        assertThat(owner.getOrganizationId()).isNotNull();
+        assertThat(organizations.count()).isEqualTo(2);
+        assertThat(service.me(AUTH).id()).isEqualTo(owner.getOrganizationId());
+        assertThat(
+                        service.patch(
+                                        AUTH,
+                                        owner.getOrganizationId(),
+                                        OrganizationPatch.fromJson(
+                                                json.readTree("{\"name\":\"Updated\"}")))
+                                .name())
+                .isEqualTo("Updated");
+    }
+
+    @Test
+    void failedOwnershipAssignmentRollsBackTheOrganizationInsert() {
+        UUID creator = account("STANDARD", null);
+        when(auth.verifyAccessToken("isolated-access")).thenReturn(creator);
+        jdbc.execute(
+                "ALTER TABLE public.users ADD CONSTRAINT test_reject_assignment CHECK (role <> 'ORGANIZATION' OR id <> '"
+                        + creator
+                        + "'::uuid)");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    service.create(
+                                            AUTH,
+                                            OrganizationPatch.fromJson(
+                                                    json.readTree("{\"name\":\"Garden\"}"))))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThat(organizations.count()).isEqualTo(1);
+            var account = users.getById(creator);
+            assertThat(account.getRole()).isEqualTo(UserRole.STANDARD);
+            assertThat(account.getOrganizationId()).isNull();
+        } finally {
+            jdbc.execute("ALTER TABLE public.users DROP CONSTRAINT test_reject_assignment");
+        }
     }
 
     @Test
