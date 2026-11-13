@@ -40,6 +40,16 @@ vi.mock('./auth/client', () => ({
 }));
 
 const id = 'b6034174-d377-4ad4-b96a-6777660143e6';
+const organizationId = 'a975e6c1-38b9-438a-a798-12741f117870';
+const organizationPath = `/organizations/${organizationId}`;
+const organization = {
+  id: organizationId,
+  name: 'Atlanta Community Gardens',
+  description: 'Neighbors growing food together.',
+  website: 'https://example.org/',
+  isVerified: true,
+  createdAt: '2026-11-01T18:00:00Z',
+};
 const profile = {
   id,
   email: 'sam@example.com',
@@ -79,6 +89,130 @@ function emit(event: string, value: unknown) {
 function restore() {
   localStorage.setItem('sow-auth-session', JSON.stringify(session()));
 }
+
+describe('organization profile', () => {
+  it.each([
+    [404, 'ORGANIZATION_NOT_FOUND', 'Organization not found.'],
+    [401, 'UNAUTHORIZED', 'Your session has expired. Please log in again.'],
+  ])(
+    'handles organization read errors with status %s',
+    async (status, code, message) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(json({ code }, status));
+      render(<App />);
+      await screen.findByText(message);
+      expect(window.location.pathname).toBe(
+        status === 401 ? '/login' : organizationPath,
+      );
+      expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    },
+  );
+
+  it.each(['STANDARD', 'ADMIN', 'ORGANIZATION'])(
+    'shows the direct-link profile read-only for %s without ownership',
+    async (role) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          json({
+            ...profile,
+            role,
+            organizationId: role === 'ADMIN' ? organizationId : id,
+          }),
+        )
+        .mockResolvedValueOnce(json(organization));
+      render(<App />);
+      await screen.findByRole('heading', { name: organization.name });
+      expect(screen.getByText('Verified')).toBeTruthy();
+      expect(
+        screen.getByRole('link', { name: 'example.org' }).getAttribute('href'),
+      ).toBe(organization.website);
+      expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    },
+  );
+
+  it('opens My organization and saves only changed fields with the current token', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        json({ ...profile, role: 'ORGANIZATION', organizationId }),
+      )
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json({ ...organization, website: null }));
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('link', { name: 'My organization' }),
+    );
+    expect(window.location.pathname).toBe(organizationPath);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    await userEvent.clear(screen.getByLabelText('Website'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('Organization profile updated.'),
+    ).toBeTruthy();
+    expect(screen.getByText('No website listed.')).toBeTruthy();
+    expect(fetch).toHaveBeenLastCalledWith(
+      `/api${organizationPath}`,
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ website: null }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+  });
+
+  it('keeps the draft after a failed save and hides editing when permission is denied', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        json({ ...profile, role: 'ORGANIZATION', organizationId }),
+      )
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json({ code: 'ORGANIZATION_UNAVAILABLE' }, 503))
+      .mockResolvedValueOnce(json({ code: 'FORBIDDEN' }, 403));
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    const name = screen.getByLabelText<HTMLInputElement>('Organization name');
+    await userEvent.clear(name);
+    await userEvent.type(name, 'New name');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(/save could not be confirmed/);
+    expect(name.value).toBe('New name');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(/do not have permission/);
+    expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: organization.name }),
+    ).toBeTruthy();
+  });
+
+  it('preserves an organization deep link through sign-in', async () => {
+    window.history.replaceState(null, '', organizationPath);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Welcome back.' });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(result()))
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization));
+    const user = await fill();
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await screen.findByRole('heading', { name: organization.name });
+    expect(window.location.pathname).toBe(organizationPath);
+  });
+});
 async function fill(mode: 'signup' | 'login' = 'login') {
   const user = userEvent.setup();
   if (mode === 'signup') {

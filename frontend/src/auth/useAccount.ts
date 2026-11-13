@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
   ApiError,
@@ -16,7 +16,7 @@ type AccountState =
       profile?: never;
       message?: string;
     }
-  | { status: 'ready'; profile: Profile; message?: never }
+  | { status: 'ready'; profile: Profile; accessToken: string; message?: never }
   | { status: 'error'; profile?: never; message: string };
 
 export function useAccount() {
@@ -26,6 +26,16 @@ export function useAccount() {
   const request = useRef<AbortController | null>(null);
   const signingOut = useRef(false);
   const mounted = useRef(false);
+
+  const expireSession = useCallback(() => {
+    ++epoch.current;
+    request.current?.abort();
+    forgetStoredSession();
+    setState({
+      status: 'anonymous',
+      message: 'Your session has expired. Please log in again.',
+    });
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -74,7 +84,11 @@ export function useAccount() {
         if (profile.id !== session.user.id)
           throw new ApiError(401, 'UNAUTHORIZED');
         if (active && epoch.current === generation)
-          setState({ status: 'ready', profile });
+          setState({
+            status: 'ready',
+            profile,
+            accessToken: session.access_token,
+          });
       } catch (error) {
         if (
           !active ||
@@ -186,5 +200,11 @@ export function useAccount() {
     }
   }
 
-  return { state, signIn, logout, retry: () => setRetry((value) => value + 1) };
+  return {
+    state,
+    signIn,
+    logout,
+    expireSession,
+    retry: () => setRetry((value) => value + 1),
+  };
 }
