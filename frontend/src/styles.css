@@ -64,7 +64,8 @@ svg {
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 3px solid var(--purple);
   outline-offset: 4px;
 }
@@ -421,7 +422,8 @@ label {
   font-weight: 500;
   margin-bottom: 16px;
 }
-input {
+input,
+textarea {
   display: block;
   width: 100%;
   min-width: 0;
@@ -563,6 +565,55 @@ input::placeholder {
 }
 .profile-empty {
   color: var(--muted);
+}
+.my-organization {
+  margin-top: 16px;
+  text-decoration: underline;
+}
+.organization-intro {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.organization-label {
+  margin-bottom: 4px;
+}
+.organization-verified {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--green);
+}
+.organization-website {
+  color: var(--green);
+  text-decoration: underline;
+}
+.organization-website svg {
+  vertical-align: middle;
+}
+.organization-wide {
+  grid-column: 1 / -1;
+}
+.organization-status {
+  padding-block: 36px;
+}
+.organization-status > * + * {
+  margin-top: 12px;
+}
+.organization-details fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.organization-details textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+.organization-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .feed-layout {
   display: grid;
@@ -1005,7 +1056,8 @@ input::placeholder {
   .column-heading h2 {
     font-size: 17px;
   }
-  input {
+  input,
+  textarea {
     font-size: 16px;
   }
   .post-actions button {

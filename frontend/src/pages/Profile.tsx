@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Profile } from '../api/auth';
+import { PageLink } from '../components/PageLink';
 
 const memberSince = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -73,6 +74,14 @@ export function ProfilePage({ profile }: { profile: Profile }) {
               </time>
             </dd>
           </dl>
+          {profile.role === 'ORGANIZATION' && profile.organizationId && (
+            <PageLink
+              className="text-link my-organization"
+              page={`organizations/${profile.organizationId}`}
+            >
+              My organization
+            </PageLink>
+          )}
         </section>
       </div>
     </div>

@@ -4,11 +4,17 @@ import { Landing } from './pages/Landing';
 import { Account } from './pages/Account';
 import { Home } from './pages/Home';
 import { ProfilePage } from './pages/Profile';
+import { OrganizationPage } from './pages/Organization';
 import { useAccount } from './auth/useAccount';
 import type { Page } from './navigation';
-import { getPage, isAccountPage, NavigationContext } from './navigation';
+import {
+  getPage,
+  isAccountPage,
+  isOrganizationPage,
+  NavigationContext,
+} from './navigation';
 
-const pageTitles: Record<Page, string> = {
+const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
   landing: 'Making Service Social',
   login: 'Welcome back',
   signup: 'Join the community',
@@ -18,7 +24,7 @@ const pageTitles: Record<Page, string> = {
 
 export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
-  const { state, signIn, logout, retry } = useAccount();
+  const { state, signIn, logout, expireSession, retry } = useAccount();
   const main = useRef<HTMLElement>(null);
   const accountPage = isAccountPage(page);
   const redirectToLogin = accountPage && state.status === 'anonymous';
@@ -34,7 +40,7 @@ export default function App() {
     if (redirectToLogin) {
       window.history.replaceState(null, '', '/login');
     }
-    document.title = `${pageTitles[visiblePage]} | SOW`;
+    document.title = `${isOrganizationPage(visiblePage) ? 'Organization profile' : pageTitles[visiblePage]} | SOW`;
     main.current?.focus();
     window.scrollTo(0, 0);
   }, [redirectToLogin, state.status, visiblePage]);
@@ -69,7 +75,8 @@ export default function App() {
               mode={visiblePage}
               onEnter={async (input, signal) => {
                 await signIn(visiblePage, input, signal);
-                if (!signal.aborted) navigate('home');
+                if (!signal.aborted)
+                  navigate(isOrganizationPage(page) ? page : 'home');
               }}
             />
           )}
@@ -96,6 +103,15 @@ export default function App() {
         )}
         {visiblePage === 'profile' && state.status === 'ready' && (
           <ProfilePage profile={state.profile} />
+        )}
+        {isOrganizationPage(visiblePage) && state.status === 'ready' && (
+          <OrganizationPage
+            key={visiblePage}
+            id={visiblePage.slice('organizations/'.length).toLowerCase()}
+            account={state.profile}
+            accessToken={state.accessToken}
+            onUnauthorized={expireSession}
+          />
         )}
       </main>
       <Footer />
