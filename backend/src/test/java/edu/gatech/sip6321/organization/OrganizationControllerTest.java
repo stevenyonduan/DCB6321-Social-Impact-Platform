@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import edu.gatech.sip6321.account.*;
 import edu.gatech.sip6321.auth.*;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +42,7 @@ class OrganizationControllerTest {
     @MockitoBean SupabaseAuthClient auth;
     @MockitoBean UserService users;
     @MockitoBean OrganizationRepository organizations;
+    @MockitoBean OrganizationProvisioningService provisioning;
     private User account;
     private Organization organization;
 
@@ -55,6 +57,79 @@ class OrganizationControllerTest {
         organization = Organization.create("Original", "Description", "https://example.test");
         // Generated columns are populated by PostgreSQL in the integration suite.
         when(organizations.findById(ID)).thenReturn(Optional.of(organization));
+    }
+
+    @Test
+    void createsAnUnverifiedOrganizationForTheAuthenticatedStandardAccount() throws Exception {
+        when(users.lockById(USER)).thenReturn(account);
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        when(account.getOrganizationId()).thenReturn(null);
+        when(provisioning.create("Garden", null, null))
+                .thenReturn(
+                        new OrganizationResponse(ID, "Garden", null, null, false, Instant.EPOCH));
+
+        mvc.perform(
+                        post("/api/organizations")
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content("{\"name\":\"Garden\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", PATH))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.id").value(ID.toString()))
+                .andExpect(jsonPath("$.isVerified").value(false));
+        verify(account).assignCreatedOrganization(ID);
+        verify(auth).verifyAccessToken("test-access");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{}",
+                "{\"name\":null}",
+                "{\"name\":\"Garden\",\"role\":\"ORGANIZATION\"}",
+                "{\"name\":\"Garden\",\"organizationId\":null}",
+                "{\"name\":\"Garden\",\"isVerified\":true}"
+            })
+    void rejectsInvalidCreationFields(String body) throws Exception {
+        mvc.perform(
+                        post("/api/organizations")
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(provisioning, users);
+    }
+
+    @Test
+    void creationRejectsMissingAuthAndIneligibleAccounts() throws Exception {
+        String body = "{\"name\":\"Garden\"}";
+        mvc.perform(post("/api/organizations").contentType("application/json").content(body))
+                .andExpect(status().isUnauthorized());
+        when(users.lockById(USER)).thenThrow(new AccountNotFoundException());
+        mvc.perform(
+                        post("/api/organizations")
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(body))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_PROVISIONING_REQUIRED"));
+        doReturn(account).when(users).lockById(USER);
+        mvc.perform(
+                        post("/api/organizations")
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ORGANIZATION_ALREADY_ASSOCIATED"));
+        when(account.getRole()).thenReturn(UserRole.ADMIN);
+        mvc.perform(
+                        post("/api/organizations")
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(body))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(provisioning);
     }
 
     @Test

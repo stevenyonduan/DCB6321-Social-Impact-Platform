@@ -1,6 +1,10 @@
 package edu.gatech.sip6321.organization;
 
+import edu.gatech.sip6321.account.AccountNotFoundException;
+import edu.gatech.sip6321.account.User;
 import edu.gatech.sip6321.account.UserRole;
+import edu.gatech.sip6321.account.UserService;
+import edu.gatech.sip6321.auth.ProfileFailure;
 import edu.gatech.sip6321.auth.ProfileResponse;
 import edu.gatech.sip6321.auth.ProfileService;
 import java.util.List;
@@ -15,10 +19,41 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrganizationService {
     private final ProfileService profiles;
     private final OrganizationRepository organizations;
+    private final UserService users;
+    private final OrganizationProvisioningService provisioning;
 
-    public OrganizationService(ProfileService profiles, OrganizationRepository organizations) {
+    public OrganizationService(
+            ProfileService profiles,
+            OrganizationRepository organizations,
+            UserService users,
+            OrganizationProvisioningService provisioning) {
         this.profiles = profiles;
         this.organizations = organizations;
+        this.users = users;
+        this.provisioning = provisioning;
+    }
+
+    @Transactional
+    public OrganizationResponse create(List<String> authorization, OrganizationPatch fields) {
+        UUID userId = profiles.verifiedUserId(authorization);
+        if (fields == null || !fields.contains("name")) throw OrganizationFailure.invalid();
+        // Read eligibility under the lock so concurrent attempts see the first committed
+        // assignment.
+        User user;
+        try {
+            user = users.lockById(userId);
+        } catch (AccountNotFoundException exception) {
+            throw ProfileFailure.provisioning();
+        }
+        if (user.getRole() == UserRole.ADMIN) throw OrganizationFailure.forbidden();
+        if (user.getOrganizationId() != null) throw OrganizationFailure.alreadyAssociated();
+        if (user.getRole() != UserRole.STANDARD) throw OrganizationFailure.forbidden();
+        var created =
+                provisioning.create(
+                        fields.value("name"), fields.value("description"), fields.value("website"));
+        user.assignCreatedOrganization(created.id());
+        organizations.flush();
+        return created;
     }
 
     public OrganizationResponse get(List<String> authorization, UUID id) {

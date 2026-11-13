@@ -31,4 +31,11 @@ public final class OrganizationFailure extends RuntimeException {
     public static OrganizationFailure missing() {
         return new OrganizationFailure(404, "ORGANIZATION_NOT_FOUND", "Organization not found.");
     }
+
+    public static OrganizationFailure alreadyAssociated() {
+        return new OrganizationFailure(
+                409,
+                "ORGANIZATION_ALREADY_ASSOCIATED",
+                "This account is already linked to an organization.");
+    }
 }

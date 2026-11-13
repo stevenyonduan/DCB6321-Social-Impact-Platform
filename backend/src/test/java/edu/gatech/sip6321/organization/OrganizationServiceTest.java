@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import edu.gatech.sip6321.account.UserRole;
+import edu.gatech.sip6321.account.UserService;
 import edu.gatech.sip6321.auth.ProfileFailure;
 import edu.gatech.sip6321.auth.ProfileResponse;
 import edu.gatech.sip6321.auth.ProfileService;
@@ -15,7 +16,12 @@ import tools.jackson.databind.json.JsonMapper;
 class OrganizationServiceTest {
     private final ProfileService profiles = mock(ProfileService.class);
     private final OrganizationRepository organizations = mock(OrganizationRepository.class);
-    private final OrganizationService service = new OrganizationService(profiles, organizations);
+    private final OrganizationService service =
+            new OrganizationService(
+                    profiles,
+                    organizations,
+                    mock(UserService.class),
+                    mock(OrganizationProvisioningService.class));
     private final UUID id = UUID.randomUUID();
     private final List<String> authorization = List.of("Bearer unit-access");
 

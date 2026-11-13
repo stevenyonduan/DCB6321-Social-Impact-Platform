@@ -1,8 +1,8 @@
 # Organization profiles
 
-This ticket implements authenticated organization reads and owner-authorized editing. Organization
-self-registration is **not implemented**. Standard signup, login, `/api/users/me`, and browser
-session handling retain their existing contracts. No frontend code changes are required.
+The API supports authenticated organization creation and reads, plus owner-authorized editing.
+Users create organizations after signing in with an existing account. Signup and login retain their
+existing contracts. A frontend creation form can call the endpoint documented below.
 
 ## Persistence and relationships
 
@@ -22,7 +22,8 @@ semantics as the DDD's `uuid_generate_v4()` without depending on Supabase extens
 JPA generates UUID v4 IDs for inserts; SQL inserts can use the database default. Hibernate reads
 verification and timestamp defaults back after insert. Neither column is updated by JPA.
 `OrganizationProvisioningService.create(name, description, website)` is an internal transactional
-creation boundary, **not** an HTTP endpoint or an account-assignment workflow. It creates no users.
+creation boundary. The authenticated creation flow calls it in the same transaction that assigns
+the existing account as owner.
 
 `users.organization_id` remains a nullable UUID scalar in JPA and gains the validated
 `users_organization_fkey` referencing `organizations.id`, with NO ACTION for delete/update.
@@ -41,6 +42,7 @@ provider availability is required. Services enforce authorization, including whe
 
 | Operation | Rule |
 | --- | --- |
+| Create | Persisted STANDARD role with no organization association |
 | Read by ID | Any authenticated identity with an application account |
 | Read `/me` | Persisted ORGANIZATION role and non-null organization association |
 | Edit by ID | Persisted ORGANIZATION role and association exactly equal to target UUID |
@@ -55,6 +57,31 @@ six fields below. No application account, email, token, or entity lifecycle prop
 
 All requests require `Authorization: Bearer <ACCESS_TOKEN>`. These examples contain placeholders,
 not credentials; avoid printing tokens in terminals, request logs, or shared screenshots.
+
+### Create an organization
+
+```http
+POST /api/organizations
+Authorization: Bearer <ACCESS_TOKEN>
+Content-Type: application/json
+
+{"name":"Community Garden Collective","description":null,"website":"https://example.org"}
+```
+
+Only `name`, `description`, and `website` are accepted. `name` is required. The other two fields
+may be omitted or null. Field validation uses the same rules as PATCH.
+
+The backend verifies the bearer token, locks the existing account row, and creates an unverified
+organization and assigns the account's `ORGANIZATION` role and `organizationId` in one transaction.
+An eligible request returns `201 Created`, `Location: /api/organizations/{id}`, `Cache-Control:
+no-store`, and the same six-field response as GET. Fetch `/api/users/me` again to update the
+frontend's role and organization association. The existing session can make that request.
+
+An already-linked `STANDARD` or `ORGANIZATION` account receives `409 ORGANIZATION_ALREADY_ASSOCIATED`,
+including on a duplicate attempt after a successful commit. `ADMIN` and an unlinked `ORGANIZATION`
+account receive `403 FORBIDDEN`. After a lost response, reload `/api/users/me` to find any assignment.
+
+### Read or edit an organization
 
 ```http
 GET /api/organizations/a975e6c1-38b9-438a-a798-12741f117870
@@ -127,7 +154,8 @@ Raw database/provider exceptions, rejected values, and bearer tokens are never l
 | 403 | FORBIDDEN | Role, association, or target ownership denied |
 | 404 | ORGANIZATION_NOT_FOUND | Authorized read target absent, or own linked record absent |
 | 405 | METHOD_NOT_ALLOWED | Unsupported method |
-| 415 | UNSUPPORTED_MEDIA_TYPE | PATCH requires application/json |
+| 409 | ORGANIZATION_ALREADY_ASSOCIATED | Account already linked on creation |
+| 415 | UNSUPPORTED_MEDIA_TYPE | POST and PATCH require application/json |
 | 429 | AUTH_RATE_LIMITED | Existing Auth rate-limit convention |
 | 502 | AUTH_RESPONSE_INVALID | Invalid upstream Auth response |
 | 503 | AUTH_UNAVAILABLE | Existing Auth timeout/network/provider failure |
@@ -206,7 +234,8 @@ No SQL has been executed against Supabase by this task.
 5. Confirm the effective Render JDBC role's schema/table privileges and RLS strategy. The existing
    owner connection normally bypasses RLS. A restricted role requires USAGE on schema public,
    SELECT on users/organizations, and UPDATE on editable organization columns (or table UPDATE).
-   Internal future provisioning also requires INSERT on organizations and users. UUID generation
+   Authenticated creation requires INSERT on organizations and SELECT and UPDATE on users, including
+   access to lock the caller row. Account signup also requires INSERT on users. UUID generation
    requires no sequence privilege. Table grants alone do not bypass RLS: a non-owner/non-bypass role
    also needs separately reviewed backend-only policies. Do not grant browser roles access or
    introduce public policies to solve backend permissions. No new credentials are required.
@@ -278,19 +307,18 @@ defaults/FK/RLS, reload successful edits, prove role/organization isolation, and
 to verify rollback. Existing auth/account tests remain regression coverage. Historical V001 tests
 continue to test V001 alone; the new suite tests the additive migration chain.
 
-No frontend changes, verification workflow, public creation endpoint, self-registration, listing,
-following, membership management, events, RSVP, hours, messaging, or dashboard is implemented.
-Existing managers must be provisioned through a separately authorized operator process. No
-operator-assignment API or production data changes are part of this ticket.
+Verification, assignment to an existing organization, and administrative delegation remain
+separate workflows. The creation endpoint only assigns the caller to the newly created record.
 
-## Signup integration assessment and follow-up tickets
+## Historical signup assessment
 
-Organization signup requires a separate ticket. It touches `SignupRequest`, `SignupService`,
+The following was the original signup-based proposal. Organization creation now uses the signed-in
+endpoint above. The historical proposal touches `SignupRequest`, `SignupService`,
 `UserService`, retry matching, recovery documentation, frontend `Signup`/allowlisting/form/session
 integration, and tests. Current retries explicitly require STANDARD and must not be broadened
 without reviewing recovery and uncertain-commit behavior. No teammate work was overwritten.
 
-Required implementation:
+Original proposal:
 
 1. Approve a discriminated Standard/Organization signup contract, preserving current Standard
    clients. Accept only an allowlisted account-kind selector and organization profile input;

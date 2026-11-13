@@ -1,5 +1,6 @@
 package edu.gatech.sip6321.organization;
 
+import java.net.URI;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -15,6 +16,15 @@ public class OrganizationController {
 
     public OrganizationController(OrganizationService organizations) {
         this.organizations = organizations;
+    }
+
+    @PostMapping(consumes = "application/json")
+    public ResponseEntity<OrganizationResponse> create(
+            @RequestHeader HttpHeaders headers, @RequestBody OrganizationPatch fields) {
+        var created = organizations.create(headers.get(HttpHeaders.AUTHORIZATION), fields);
+        return ResponseEntity.created(URI.create("/api/organizations/" + created.id()))
+                .cacheControl(CacheControl.noStore())
+                .body(created);
     }
 
     @GetMapping("/me")
