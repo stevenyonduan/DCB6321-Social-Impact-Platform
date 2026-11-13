@@ -4,7 +4,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Internal creation boundary only. No HTTP creation route or account-assignment authority. */
+/** Internal organization record creation. The calling service handles account assignment. */
 @Service
 @Profile({"database", "prod", "render"})
 public class OrganizationProvisioningService {

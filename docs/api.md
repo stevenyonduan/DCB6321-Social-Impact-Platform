@@ -17,12 +17,13 @@ schema fields. V003 remains unapplied to Supabase and is updated in place; no V0
 
 ## Subsequently approved authentication contracts
 
-The subsequently approved organization-profile ticket adds authenticated
+The organization API provides authenticated `POST /api/organizations` for a signed-in
+STANDARD account without an organization. It atomically creates an unverified organization and
+links the caller as its owner. Signup remains separate. The organization-profile endpoints are
 `GET /api/organizations/{id}`, `GET /api/organizations/me`, and owner-authorized
 `PATCH /api/organizations/{id}`. See [organization profiles](../backend/ORGANIZATIONS.md)
 for JSON/TypeScript contracts, errors, V002 and manual deployment. Only persisted ORGANIZATION
-accounts associated with the target can edit; ADMIN has no override. Organization signup is
-not implemented and remains a separate ticket.
+accounts associated with the target can edit; ADMIN has no override.
 
 The project owner approved and authorized `POST /api/auth/signup` with email confirmation disabled,
 STANDARD-only account creation, server-side validation of the returned Supabase identity, and

@@ -3,6 +3,7 @@ package edu.gatech.sip6321.auth;
 import edu.gatech.sip6321.account.AccountNotFoundException;
 import edu.gatech.sip6321.account.UserService;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.TransactionSystemException;
@@ -17,6 +18,19 @@ public class ProfileService {
     }
 
     public ProfileResponse me(List<String> authorization) {
+        var id = verifiedUserId(authorization);
+        try {
+            return ProfileResponse.of(users.getById(id));
+        } catch (AccountNotFoundException exception) {
+            throw ProfileFailure.provisioning();
+        } catch (DataAccessException
+                | CannotCreateTransactionException
+                | TransactionSystemException exception) {
+            throw ProfileFailure.database();
+        }
+    }
+
+    public UUID verifiedUserId(List<String> authorization) {
         if (authorization == null || authorization.size() != 1) {
             throw ProfileFailure.unauthorized();
         }
@@ -28,15 +42,6 @@ public class ProfileService {
             throw ProfileFailure.unauthorized();
         }
         String token = header.substring(header.indexOf(' ') + 1).stripLeading();
-        var id = auth.verifyAccessToken(token);
-        try {
-            return ProfileResponse.of(users.getById(id));
-        } catch (AccountNotFoundException exception) {
-            throw ProfileFailure.provisioning();
-        } catch (DataAccessException
-                | CannotCreateTransactionException
-                | TransactionSystemException exception) {
-            throw ProfileFailure.database();
-        }
+        return auth.verifyAccessToken(token);
     }
 }
