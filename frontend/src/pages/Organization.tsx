@@ -6,6 +6,7 @@ import {
   organizationRequest,
   type OrganizationProfile,
 } from '../api/organizations';
+import { OrganizationOpportunities } from './OrganizationOpportunities';
 
 const monthAndYear = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -332,6 +333,12 @@ export function OrganizationPage({
             </dd>
           </dl>
         </section>
+        <OrganizationOpportunities
+          id={id}
+          accessToken={accessToken}
+          canPublish={canEdit}
+          onUnauthorized={onUnauthorized}
+        />
       </div>
     </div>
   );

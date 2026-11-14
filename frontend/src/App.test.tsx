@@ -42,6 +42,8 @@ vi.mock('./auth/client', () => ({
 const id = 'b6034174-d377-4ad4-b96a-6777660143e6';
 const organizationId = 'a975e6c1-38b9-438a-a798-12741f117870';
 const organizationPath = `/organizations/${organizationId}`;
+const opportunityPath = `/api${organizationPath}/opportunities?page=0&size=20`;
+const emptyOpportunities = { items: [], page: 0, size: 20, hasNext: false };
 const organization = {
   id: organizationId,
   name: 'Atlanta Community Gardens',
@@ -161,6 +163,7 @@ describe('organization profile', () => {
       )
       .mockResolvedValueOnce(json(organization))
       .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json(emptyOpportunities))
       .mockResolvedValueOnce(json({ ...organization, website: null }));
     render(<App />);
     await userEvent.click(
@@ -288,6 +291,7 @@ describe('organization profile', () => {
         json({ ...profile, role: 'ORGANIZATION', organizationId }),
       )
       .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json(emptyOpportunities))
       .mockResolvedValueOnce(json({ code: 'ORGANIZATION_UNAVAILABLE' }, 503))
       .mockResolvedValueOnce(json({ code: 'FORBIDDEN' }, 403));
     render(<App />);
@@ -323,6 +327,137 @@ describe('organization profile', () => {
     expect(window.location.pathname).toBe(organizationPath);
   });
 });
+
+describe('organization opportunities', () => {
+  const start = '2099-01-15T10:00';
+  const end = '2099-01-15T12:00';
+  const opportunity = {
+    id: '3a5b0fd2-7d4a-4bd9-8d71-dca84dd08792',
+    organizationId,
+    creatorId: id,
+    createdAt: organization.createdAt,
+    title: 'Garden workday',
+    description: 'Help prepare garden beds.',
+    location: 'Atlanta, GA',
+    eventStart: new Date(start).toISOString(),
+    eventEnd: new Date(end).toISOString(),
+    imageUrl: null,
+    registrationType: 'EXTERNAL',
+    registrationUrl: 'https://example.org/register',
+  };
+
+  it('publishes as the owner and loads the saved opportunity again after reload', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    let published = false;
+    vi.mocked(fetch).mockImplementation(async (url, options) => {
+      if (url === '/api/users/me') {
+        return json({ ...profile, role: 'ORGANIZATION', organizationId });
+      }
+      if (url === opportunityPath) {
+        return json({
+          ...emptyOpportunities,
+          items: published ? [opportunity] : [],
+        });
+      }
+      if (options?.method === 'POST') {
+        published = true;
+        return json(opportunity, 201);
+      }
+      return json(organization);
+    });
+    const view = render(<App />);
+    await screen.findByText('No upcoming opportunities yet.');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Publish opportunity' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Publish opportunity' }),
+    );
+    expect(
+      dialog.getByRole<HTMLInputElement>('radio', { name: 'Internal' }).checked,
+    ).toBe(true);
+    expect(dialog.queryByLabelText('Registration URL')).toBeNull();
+    await userEvent.click(dialog.getByRole('radio', { name: 'External' }));
+    await userEvent.type(
+      dialog.getByLabelText('Registration URL'),
+      opportunity.registrationUrl,
+    );
+    await userEvent.type(dialog.getByLabelText('Title'), opportunity.title);
+    await userEvent.type(
+      dialog.getByLabelText('Description'),
+      opportunity.description,
+    );
+    await userEvent.type(
+      dialog.getByLabelText('Location'),
+      opportunity.location,
+    );
+    fireEvent.change(dialog.getByLabelText('Start date and time'), {
+      target: { value: start },
+    });
+    fireEvent.change(dialog.getByLabelText('End date and time'), {
+      target: { value: end },
+    });
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Publish opportunity' }),
+    );
+    await screen.findByText('Opportunity published.');
+    expect(
+      (
+        await screen.findByRole('link', { name: 'Register on example.org' })
+      ).getAttribute('href'),
+    ).toBe(opportunity.registrationUrl);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/organizations/me/opportunities',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+        body: JSON.stringify({
+          title: opportunity.title,
+          description: opportunity.description,
+          location: opportunity.location,
+          eventStart: opportunity.eventStart,
+          eventEnd: opportunity.eventEnd,
+          imageUrl: null,
+          registrationType: 'EXTERNAL',
+          registrationUrl: opportunity.registrationUrl,
+        }),
+      }),
+    );
+    view.unmount();
+    render(<App />);
+    await screen.findByRole('heading', { name: opportunity.title });
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => url === opportunityPath),
+    ).toHaveLength(3);
+  });
+
+  it('shows a read-only list to a regular user and loads the next page', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(
+        json({ ...emptyOpportunities, items: [opportunity], hasNext: true }),
+      )
+      .mockResolvedValueOnce(json({ ...emptyOpportunities, page: 1 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: opportunity.title });
+    expect(
+      screen.queryByRole('button', { name: 'Publish opportunity' }),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Page 2');
+    expect(fetch).toHaveBeenLastCalledWith(
+      opportunityPath.replace('page=0', 'page=1'),
+      expect.anything(),
+    );
+  });
+});
+
 async function fill(mode: 'signup' | 'login' = 'login') {
   const user = userEvent.setup();
   if (mode === 'signup') {
