@@ -1,5 +1,6 @@
 package edu.gatech.sip6321.auth;
 
+import edu.gatech.sip6321.account.OrganizationRole;
 import edu.gatech.sip6321.account.User;
 import edu.gatech.sip6321.account.UserRole;
 import java.time.Instant;
@@ -15,6 +16,7 @@ public record ProfileResponse(
         String bio,
         String avatarUrl,
         UUID organizationId,
+        OrganizationRole organizationRole,
         Instant createdAt) {
     public static ProfileResponse of(User user) {
         return new ProfileResponse(
@@ -26,6 +28,7 @@ public record ProfileResponse(
                 user.getBio(),
                 user.getAvatarUrl(),
                 user.getOrganizationId(),
+                user.getOrganizationRole(),
                 user.getCreatedAt());
     }
 

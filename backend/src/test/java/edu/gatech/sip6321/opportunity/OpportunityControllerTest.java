@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import edu.gatech.sip6321.account.*;
+import edu.gatech.sip6321.account.OrganizationRole;
 import edu.gatech.sip6321.auth.*;
 import edu.gatech.sip6321.organization.OrganizationRepository;
 import java.time.*;
@@ -30,7 +31,12 @@ import tools.jackson.databind.ObjectMapper;
             "SIP_AUTH_ENABLED=true",
             "SIP_CORS_ALLOWED_ORIGINS=https://frontend.example.test"
         })
-@Import({OpportunityService.class, ProfileService.class, OpportunityExceptionHandler.class})
+@Import({
+    OpportunityService.class,
+    ProfileService.class,
+    edu.gatech.sip6321.organization.OrganizationAuthorization.class,
+    OpportunityExceptionHandler.class
+})
 @ExtendWith(OutputCaptureExtension.class)
 class OpportunityControllerTest {
     static final UUID ORG = UUID.randomUUID();
@@ -57,7 +63,8 @@ class OpportunityControllerTest {
         when(clock.instant()).thenReturn(NOW);
         account = mock(User.class);
         when(account.getId()).thenReturn(USER);
-        when(account.getRole()).thenReturn(UserRole.ORGANIZATION);
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.OWNER);
         when(account.getOrganizationId()).thenReturn(ORG);
         when(auth.verifyAccessToken("test-access")).thenReturn(USER);
         when(users.getById(USER)).thenReturn(account);
@@ -66,6 +73,20 @@ class OpportunityControllerTest {
         when(events.findByOrganizationIdAndEventStartAfterOrderByEventStartAscIdAsc(
                         eq(ORG), any(), any()))
                 .thenReturn(new SliceImpl<>(List.of(), PageRequest.of(0, 20), false));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OWNER", "ADMIN"})
+    void bothOrganizationRolesPublishWithStandardGlobalAccount(String role) throws Exception {
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.valueOf(role));
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        mvc.perform(
+                        post(POST)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content(BODY))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.organizationId").value(ORG.toString()));
     }
 
     @Test
@@ -87,7 +108,10 @@ class OpportunityControllerTest {
     @ValueSource(strings = {"STANDARD", "ADMIN", "UNASSOCIATED"})
     void deniesUnauthorizedPublishing(String role) throws Exception {
         if (role.equals("UNASSOCIATED")) when(account.getOrganizationId()).thenReturn(null);
-        else when(account.getRole()).thenReturn(UserRole.valueOf(role));
+        else {
+            when(account.getRole()).thenReturn(UserRole.valueOf(role));
+            when(account.getOrganizationRole()).thenReturn(null);
+        }
         mvc.perform(
                         post(POST)
                                 .header("Authorization", "Bearer test-access")
@@ -450,7 +474,10 @@ class OpportunityControllerTest {
     @ValueSource(strings = {"STANDARD", "ADMIN", "UNASSOCIATED"})
     void externalRegistrationDoesNotGrantPublishingAuthority(String role) throws Exception {
         if (role.equals("UNASSOCIATED")) when(account.getOrganizationId()).thenReturn(null);
-        else when(account.getRole()).thenReturn(UserRole.valueOf(role));
+        else {
+            when(account.getRole()).thenReturn(UserRole.valueOf(role));
+            when(account.getOrganizationRole()).thenReturn(null);
+        }
         var node = (tools.jackson.databind.node.ObjectNode) json.readTree(BODY);
         node.put("registrationType", "EXTERNAL");
         node.put("registrationUrl", "https://example.org");

@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import edu.gatech.sip6321.account.*;
+import edu.gatech.sip6321.account.OrganizationRole;
 import edu.gatech.sip6321.auth.*;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,7 +31,12 @@ import tools.jackson.databind.ObjectMapper;
             "SIP_AUTH_ENABLED=true",
             "SIP_CORS_ALLOWED_ORIGINS=https://frontend.example.test"
         })
-@Import({OrganizationService.class, ProfileService.class, OrganizationExceptionHandler.class})
+@Import({
+    OrganizationService.class,
+    ProfileService.class,
+    edu.gatech.sip6321.organization.OrganizationAuthorization.class,
+    OrganizationExceptionHandler.class
+})
 @ExtendWith(OutputCaptureExtension.class)
 class OrganizationControllerTest {
     private static final UUID ID = UUID.randomUUID();
@@ -48,13 +54,28 @@ class OrganizationControllerTest {
     void setup() {
         account = mock(User.class);
         when(account.getId()).thenReturn(USER);
-        when(account.getRole()).thenReturn(UserRole.ORGANIZATION);
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.OWNER);
         when(account.getOrganizationId()).thenReturn(ID);
         when(auth.verifyAccessToken("test-access")).thenReturn(USER);
         when(users.getById(USER)).thenReturn(account);
         organization = Organization.create("Original", "Description", "https://example.test");
         // Generated columns are populated by PostgreSQL in the integration suite.
         when(organizations.findById(ID)).thenReturn(Optional.of(organization));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OWNER", "ADMIN"})
+    void bothOrganizationRolesCanEditWithStandardGlobalAccount(String role) throws Exception {
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.valueOf(role));
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        mvc.perform(
+                        patch(PATH)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content("{\"description\":\"Managed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value("Managed"));
     }
 
     @Test
@@ -106,7 +127,10 @@ class OrganizationControllerTest {
         if (kind.equals("OTHER_ORGANIZATION"))
             when(account.getOrganizationId()).thenReturn(UUID.randomUUID());
         else if (kind.equals("UNASSOCIATED")) when(account.getOrganizationId()).thenReturn(null);
-        else when(account.getRole()).thenReturn(UserRole.valueOf(kind));
+        else {
+            when(account.getRole()).thenReturn(UserRole.valueOf(kind));
+            when(account.getOrganizationRole()).thenReturn(null);
+        }
         mvc.perform(
                         patch(PATH)
                                 .header("Authorization", "Bearer test-access")

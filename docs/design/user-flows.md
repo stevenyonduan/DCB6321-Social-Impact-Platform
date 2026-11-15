@@ -1,5 +1,11 @@
 # User flows — source-backed behavior
 
+Current backend organization journeys are defined by the newer approved
+[organization-management contract](../../backend/ORGANIZATION_MANAGEMENT.md): volunteer signup,
+organization creation as OWNER, direct addition/removal of existing ADMINs, and shared management
+permissions. The frontend management UI remains separate work; original DDD details below are
+historical where superseded.
+
 Sources: [Detailed Design Document](../../Detailed%20Design%20Doc.pdf) (DDD), pp. 6–9 and 12–19, and the user-supplied [SIP6321 low-fidelity Figma prototype](https://www.figma.com/design/nkfx59VlujP8wPBWxXenmF/SIP6321-LowFidelity?node-id=0-1).
 
 The prototype's frames and interactions have not been inspected because the web reader could not access the file. The journeys below summarize DDD behavior, not observed Figma click paths. Exact screens, ordered onboarding steps and transitions remain unspecified where the DDD does not define them. No first implementation task or iteration priority is selected.

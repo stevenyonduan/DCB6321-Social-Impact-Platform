@@ -1,5 +1,22 @@
 # Security and privacy
 
+## Current organization-management authorization
+
+The newly approved [organization-management contract](../backend/ORGANIZATION_MANAGEMENT.md)
+supersedes the global ORGANIZATION-role checks and proposed organization permission matrix below.
+Verified persisted organization OWNER/ADMIN roles authorize matching organization profile writes
+and publication. Only OWNER can add/remove ADMINs; global ADMIN grants no override. Everyone keeps
+volunteer access. Following, event registration and verification grant no management authority.
+
+A shared service helper reuses ProfileService/Supabase verification. Conditional database claims
+prevent concurrent account assignment; membership and audit writes commit together. Subsequent
+requests use fresh persisted permissions after removal. Strict DTOs reject supplied owner/role/
+organization/verification identities. OWNER-only email lookup uses identical unavailable-target
+conflicts and a bounded 10-attempt/60-second per-instance throttle. Management lists omit emails.
+The backend-only audit table has RLS and no browser grants. See the guide for residual eligibility
+inference, replica/restart throttle limits, required notification and incorrect-addition recovery.
+No general user directory, Auth-user creation, external messaging, or frontend management UI is added.
+
 ## Approved signup decision
 
 The project owner subsequently approved a single-step backend signup with Supabase email

@@ -19,6 +19,20 @@ public final class OrganizationFailure extends RuntimeException {
         return code;
     }
 
+    public static OrganizationFailure conflict() {
+        return new OrganizationFailure(
+                409, "MEMBERSHIP_CONFLICT", "Organization membership could not be assigned.");
+    }
+
+    public static OrganizationFailure memberMissing() {
+        return new OrganizationFailure(404, "ADMIN_NOT_FOUND", "Organization admin not found.");
+    }
+
+    public static OrganizationFailure rateLimited() {
+        return new OrganizationFailure(
+                429, "MANAGEMENT_RATE_LIMITED", "Too many management attempts. Try again later.");
+    }
+
     public static OrganizationFailure invalid() {
         return new OrganizationFailure(
                 400, "INVALID_REQUEST", "Check the organization fields and try again.");

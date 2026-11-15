@@ -82,11 +82,17 @@ class OrganizationPersistenceIT {
                         new FileSystemResource("db/migrations/V002__create_organizations.sql"))
                 .execute(dataSource);
         assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(before);
+        new ResourceDatabasePopulator(
+                        new FileSystemResource("db/migrations/V003__create_events.sql"))
+                .execute(dataSource);
+        edu.gatech.sip6321.OrganizationManagementMigrations.apply(dataSource);
     }
 
     @BeforeEach
     void setup() {
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("DELETE FROM public.organization_management_audit");
+        jdbc.update("DELETE FROM public.events");
         jdbc.update("DELETE FROM public.users");
         jdbc.update("DELETE FROM public.organizations");
         jdbc.update("DELETE FROM auth.users");
@@ -101,9 +107,10 @@ class OrganizationPersistenceIT {
         jdbc.update("INSERT INTO auth.users VALUES (?)", id);
         users.createStandardAccount(id, id + "@example.test", "First", "Last");
         jdbc.update(
-                "UPDATE public.users SET role=?, organization_id=? WHERE id=?",
+                "UPDATE public.users SET role=?, organization_id=?, organization_role=? WHERE id=?",
                 role,
                 organization,
+                organization == null ? null : "ADMIN",
                 id);
         return id;
     }
@@ -239,8 +246,8 @@ class OrganizationPersistenceIT {
         for (UUID identity :
                 List.of(
                         account("ORGANIZATION", other),
-                        account("STANDARD", organizationId),
-                        account("ADMIN", organizationId),
+                        account("STANDARD", null),
+                        account("ADMIN", null),
                         account("ORGANIZATION", null))) {
             when(auth.verifyAccessToken("isolated-access")).thenReturn(identity);
             var before = jdbc.queryForList("SELECT * FROM public.organizations ORDER BY id");

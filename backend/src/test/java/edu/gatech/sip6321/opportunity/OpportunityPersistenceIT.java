@@ -84,12 +84,20 @@ class OpportunityPersistenceIT {
                 .execute(source);
         assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(beforeUsers);
         assertThat(jdbc.queryForList("SELECT * FROM public.organizations")).isEqualTo(beforeOrgs);
+        edu.gatech.sip6321.OrganizationManagementMigrations.apply(
+                source,
+                "INSERT INTO approved_organization_roles VALUES ('"
+                        + user
+                        + "','"
+                        + org
+                        + "','OWNER');");
     }
 
     @BeforeEach
     void setup() {
         when(clock.instant()).thenReturn(NOW);
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("DELETE FROM public.organization_management_audit");
         jdbc.update("DELETE FROM public.events");
         jdbc.update("DELETE FROM public.users");
         jdbc.update("DELETE FROM public.organizations");
@@ -109,7 +117,11 @@ class OpportunityPersistenceIT {
         jdbc.update("INSERT INTO auth.users VALUES (?)", user);
         users.createStandardAccount(user, user + "@example.test", "First", "Last");
         jdbc.update(
-                "UPDATE public.users SET role=?, organization_id=? WHERE id=?", role, org, user);
+                "UPDATE public.users SET role=?, organization_id=?, organization_role=? WHERE id=?",
+                role,
+                org,
+                org == null ? null : "ADMIN",
+                user);
         return user;
     }
 
@@ -202,7 +214,7 @@ class OpportunityPersistenceIT {
     @Test
     void rejectsAdminAndUnassociatedManagersWithoutWrites() throws Exception {
         for (String role : List.of("ADMIN", "ORGANIZATION")) {
-            UUID id = account(role, role.equals("ADMIN") ? orgA : null);
+            UUID id = account(role, null);
             when(auth.verifyAccessToken("denied")).thenReturn(id);
             mvc.perform(
                             post(POST)

@@ -2,8 +2,8 @@
 
 `GET /api/users/me` accepts `Authorization: Bearer <supabase_access_token>` and no body.
 It is enabled by the existing `SIP_AUTH_ENABLED=true` setting and database-capable profile,
-alongside signup/login. No migration, dependency, new Render variable, CORS change, or production
-configuration change is required. Profile editing and frontend integration are outside this ticket.
+alongside signup/login. The current organization-role contract requires reviewed V004 first;
+no new Render variable, dependency, or CORS change is required. Profile editing and frontend integration are outside this ticket.
 
 HTTP 200 returns a plain application profile object with `Cache-Control: no-store`:
 
@@ -17,13 +17,17 @@ HTTP 200 returns a plain application profile object with `Cache-Control: no-stor
   "bio": null,
   "avatarUrl": null,
   "organizationId": null,
+  "organizationRole": null,
   "createdAt": "2026-11-01T18:00:00Z"
 }
 ```
 
-All nine fields come from `public.users`. Nullable profile fields are present as JSON null;
+All ten fields come from `public.users`. Nullable profile fields are present as JSON null;
 `createdAt` is an ISO-8601 UTC instant. All existing account roles can read their own account.
 No password, session, token, entity lifecycle state, or internal persistence field is returned.
+
+The additive `organizationRole` is null, OWNER, or ADMIN, separate from the preserved global role.
+See [organization management](ORGANIZATION_MANAGEMENT.md) for permissions and deployment order.
 
 ## Authentication and account lookup
 

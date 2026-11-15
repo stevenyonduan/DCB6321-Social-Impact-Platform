@@ -1,5 +1,11 @@
 # UI specification and prototype reference
 
+Current backend organization journeys are defined by the newer approved
+[organization-management contract](../../backend/ORGANIZATION_MANAGEMENT.md): volunteer signup,
+organization creation as OWNER, direct addition/removal of existing ADMINs, and shared management
+permissions. The frontend management UI remains separate work; original DDD details below are
+historical where superseded.
+
 ## Sources and current status
 
 **Local frontend demo update:** The user subsequently approved SOW branding, a landing page with a split photo background, centered login/sign-up forms, and a homepage with community posts on the left and opportunities on the right. The presentation now integrates the approved signup/login/own-profile endpoints. Sessions persist through the Supabase browser client; feed and opportunity content remain previews. Live local signup/login/profile and reload/logout behavior were verified on November 5, 2026; the Render deployment remains unverified. See [demo instructions and boundaries](../../frontend/DEMO.md). The original source-backed responsibilities and unresolved product policies below remain distinct from that demo approval.

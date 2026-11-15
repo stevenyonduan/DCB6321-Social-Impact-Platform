@@ -18,7 +18,11 @@ class OpportunityServiceTest {
     static final Instant NOW = Instant.parse("2027-01-01T00:00:00.123456789Z");
     final Clock clock = spy(Clock.fixed(NOW, ZoneOffset.UTC));
     final OpportunityService service =
-            new OpportunityService(profiles, organizations, events, clock);
+            new OpportunityService(
+                    new edu.gatech.sip6321.organization.OrganizationAuthorization(profiles),
+                    organizations,
+                    events,
+                    clock);
     final List<String> headers = List.of("Bearer test-access");
     final UUID org = UUID.randomUUID();
 
@@ -35,7 +39,7 @@ class OpportunityServiceTest {
     void directCallsRequirePersistedManagerAssociation() {
         for (UserRole role : UserRole.values())
             for (UUID association : new UUID[] {null, org}) {
-                if (role == UserRole.ORGANIZATION && association != null) continue;
+
                 when(profiles.me(headers))
                         .thenReturn(
                                 new ProfileResponse(
@@ -47,9 +51,10 @@ class OpportunityServiceTest {
                                         null,
                                         null,
                                         association,
+                                        null,
                                         null));
                 assertThatThrownBy(() -> service.publish(headers, null))
-                        .isInstanceOf(OpportunityFailure.class)
+                        .isInstanceOf(edu.gatech.sip6321.organization.OrganizationFailure.class)
                         .extracting("status")
                         .isEqualTo(403);
             }
@@ -157,6 +162,7 @@ class OpportunityServiceTest {
                                 null,
                                 null,
                                 org,
+                                edu.gatech.sip6321.account.OrganizationRole.OWNER,
                                 null));
         when(organizations.existsById(org)).thenReturn(true);
     }

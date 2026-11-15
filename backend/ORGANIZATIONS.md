@@ -1,5 +1,11 @@
 # Organization profiles
 
+> Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
+> global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
+> volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
+> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
+> new backend. Original ticket/deployment/verification history below is historical.
+
 This ticket implements authenticated organization reads and owner-authorized editing. Organization
 self-registration is **not implemented**. Standard signup, login, `/api/users/me`, and browser
 session handling retain their existing contracts. No frontend code changes are required.

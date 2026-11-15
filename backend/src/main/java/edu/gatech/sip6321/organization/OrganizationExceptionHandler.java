@@ -11,7 +11,8 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-@RestControllerAdvice(assignableTypes = OrganizationController.class)
+@RestControllerAdvice(
+        assignableTypes = {OrganizationController.class, OrganizationManagementController.class})
 public class OrganizationExceptionHandler {
     @ExceptionHandler(OrganizationFailure.class)
     ResponseEntity<SignupExceptionHandler.Error> failure(OrganizationFailure failure) {

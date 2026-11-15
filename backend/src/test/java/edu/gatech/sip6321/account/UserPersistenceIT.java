@@ -68,14 +68,18 @@ class UserPersistenceIT {
     @BeforeAll
     static void applyActualMigration(@Autowired DataSource dataSource) {
         new ResourceDatabasePopulator(
-                        new FileSystemResource("db/migrations/V001__create_users.sql"))
+                        new FileSystemResource("db/migrations/V001__create_users.sql"),
+                        new FileSystemResource("db/migrations/V002__create_organizations.sql"),
+                        new FileSystemResource("db/migrations/V003__create_events.sql"))
                 .execute(dataSource);
+        edu.gatech.sip6321.OrganizationManagementMigrations.apply(dataSource);
     }
 
     @BeforeEach
     void resetIsolatedDatabase() {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.update("DELETE FROM public.users");
+        jdbc.update("DELETE FROM public.organizations");
         jdbc.update("DELETE FROM auth.users");
         id = UUID.randomUUID();
         authIdentity(id);
@@ -87,8 +91,9 @@ class UserPersistenceIT {
         UUID other = UUID.randomUUID();
         authIdentity(other);
         service.createStandardAccount(other, "other@example.test", "Other", "User");
+        jdbc.update("INSERT INTO public.organizations(id,name) VALUES (?, 'Profile org')", other);
         jdbc.update(
-                "UPDATE public.users SET bio = ?, avatar_url = ?, organization_id = ? WHERE id = ?",
+                "UPDATE public.users SET bio = ?, avatar_url = ?, organization_id = ?, organization_role='ADMIN' WHERE id = ?",
                 "Volunteer",
                 "https://example.test/avatar.png",
                 other,
@@ -156,6 +161,7 @@ class UserPersistenceIT {
         assertThat(loaded.getBio()).isNull();
         assertThat(loaded.getAvatarUrl()).isNull();
         assertThat(loaded.getOrganizationId()).isNull();
+        assertThat(loaded.getOrganizationRole()).isNull();
         assertThat(loaded.getCreatedAt()).isEqualTo(created.getCreatedAt());
         assertThat(service.getByEmail(EMAIL).getId()).isEqualTo(id);
         assertThat(service.existsById(id)).isTrue();
@@ -167,12 +173,15 @@ class UserPersistenceIT {
     @Test
     void mapsAllProfileColumnsAndTimestampOffset() {
         UUID organization = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO public.organizations(id,name) VALUES (?, 'Mapping org')",
+                organization);
         var timestamp = OffsetDateTime.parse("2026-10-30T09:00:00-04:00");
         jdbc.update(
                 """
                 INSERT INTO public.users
-                  (id, email, role, first_name, last_name, bio, avatar_url, organization_id, created_at)
-                VALUES (?, ?, 'STANDARD', 'First', 'Last', ?, ?, ?, ?)
+                  (id, email, role, first_name, last_name, bio, avatar_url, organization_id, organization_role, created_at)
+                VALUES (?, ?, 'STANDARD', 'First', 'Last', ?, ?, ?, 'ADMIN', ?)
                 """,
                 id,
                 EMAIL,
@@ -281,7 +290,7 @@ class UserPersistenceIT {
     }
 
     @Test
-    void schemaHasExactlyNineColumnsNoUuidDefaultAndNoOrganizationForeignKey() {
+    void schemaHasTenColumnsNoUuidDefaultAndBothForeignKeys() {
         assertThat(
                         jdbc.queryForList(
                                 """
@@ -298,7 +307,8 @@ class UserPersistenceIT {
                         "bio",
                         "avatar_url",
                         "organization_id",
-                        "created_at");
+                        "created_at",
+                        "organization_role");
         assertThat(
                         jdbc.queryForObject(
                                 """
@@ -314,7 +324,7 @@ class UserPersistenceIT {
                 WHERE conrelid = 'public.users'::regclass AND contype = 'f'
                 """,
                                 Integer.class))
-                .isEqualTo(1);
+                .isEqualTo(2);
     }
 
     @Test

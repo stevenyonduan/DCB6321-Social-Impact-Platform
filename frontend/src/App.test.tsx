@@ -49,6 +49,7 @@ const profile = {
   bio: null,
   avatarUrl: null,
   organizationId: null,
+  organizationRole: null,
   createdAt: '2026-11-01T18:00:00Z',
 };
 const session = () => ({

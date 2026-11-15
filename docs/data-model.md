@@ -2,6 +2,22 @@
 
 Source: [Detailed Design Document](../Detailed%20Design%20Doc.pdf), Figure 4 (p. 11) and Figures 5–17 (pp. 12–18), visually checked against the extracted text. This is a transcription, not SQL or a migration.
 
+## Approved organization-management extension
+
+[V004](../backend/db/migrations/V004__organization_management.sql) adds nullable
+`users.organization_role VARCHAR(20)` (OWNER/ADMIN). Both association fields must be null or both
+present. A partial unique index allows at most one OWNER per organization, multiple ADMINs remain
+valid, and the scalar organization_id preserves one organization per user. API creation/removal
+rules preserve an OWNER for supported workflows; privileged direct SQL still requires review.
+Global `users.role` is unchanged and does not authorize organization management.
+
+A backend-only `organization_management_audit` table records generated UUID, actor/target/organization
+UUID FKs with NO ACTION, action (OWNER_CREATED/ADMIN_ADDED/ADMIN_REMOVED), and creation timestamp.
+RLS/revocations protect it; no browser policies or grants are added. Existing FKs/RLS/events remain.
+Read [the complete design and explicit legacy reconciliation gate](../backend/ORGANIZATION_MANAGEMENT.md).
+The owner confirms V001–V003 are applied; never edit/rerun them. The original DDD transcription below
+is historical where superseded by these approved requirements.
+
 ## Relationship diagram
 
 ![SIP relational database ER diagram showing the 13 tables, primary and foreign keys, and relationships](design/assets/relational-database-erd.jpeg)
@@ -27,7 +43,7 @@ Profile data for all account types. Source: DDD p. 12.
 | organization_id | UUID | Yes | FK organizations(id) |
 | created_at | TIMESTAMPTZ | No | Default NOW() |
 
-Organization FK stores the account association; the PDF says ADMIN and ORGANIZATION accounts belong to exactly one organization despite nullable storage. Conditional enforcement is unresolved (D02). Auth UUID matching is specified; an explicit FK/deletion strategy to auth.users is not. Email/profile synchronization and public-field exposure require review.
+Organization FK stores the account association; the PDF says ADMIN and ORGANIZATION accounts belong to exactly one organization despite nullable storage. The organization-management extension above resolves the association/management-role invariant for this scope (D02). Auth UUID matching is specified; an explicit FK/deletion strategy to auth.users is not. Email/profile synchronization and public-field exposure require review.
 
 ## organizations
 
@@ -156,7 +172,7 @@ Organization-created volunteer opportunities. Source: DDD p. 16.
 
 The subsequently approved [opportunity publishing ticket](../backend/OPPORTUNITIES.md) implements
 the original ten fields through V003, plus the two newly approved PR #19 extension fields below. For this bounded D02 resolution, creator_id records the
-authenticated ORGANIZATION manager; ADMIN has no publishing authority. V003 uses gen_random_uuid()
+authenticated organization OWNER or ADMIN; global roles alone grant no publishing authority. V003 uses gen_random_uuid()
 as the SQL UUID default, database-generated created_at, NO ACTION foreign keys, RLS with browser
 privileges revoked, and an organization/start/id index. Nonblank required text and strictly
 increasing start/end at microsecond precision are adopted API rules. The newly approved update
@@ -171,8 +187,8 @@ Newly approved extensions to the DDD for PR #19 (not original Figure 14 fields):
 | registration_url | TEXT | Yes | Must be null for INTERNAL; non-null/nonblank for EXTERNAL |
 
 `events_registration_type_check` and `events_registration_url_check` enforce valid combinations;
-the API additionally validates external HTTP(S) URLs. V003 is updated directly because the owner
-confirms it has not been applied to Supabase. V001/V002, event keys/FKs, RLS/browser revocations,
+the API additionally validates external HTTP(S) URLs. The owner now confirms V001–V003 are applied;
+all three remain immutable. V004 changes organization authority only; event keys/FKs, RLS/browser revocations,
 and the organization/start/id index remain unchanged. No event registration rows are created.
 
 ## event_registrations

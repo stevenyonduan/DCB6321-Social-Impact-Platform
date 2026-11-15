@@ -10,6 +10,7 @@ export type Profile = AccountUser & {
   bio: string | null;
   avatarUrl: string | null;
   organizationId: string | null;
+  organizationRole: 'OWNER' | 'ADMIN' | null;
   createdAt: string;
 };
 
@@ -95,6 +96,10 @@ function profile(value: unknown): value is Profile {
     ['bio', 'avatarUrl', 'organizationId'].every(
       (key) => record[key] === null || typeof record[key] === 'string',
     ) &&
+    (record.organizationRole === null ||
+      record.organizationRole === 'OWNER' ||
+      record.organizationRole === 'ADMIN') &&
+    (record.organizationId === null) === (record.organizationRole === null) &&
     typeof record.createdAt === 'string' &&
     Number.isFinite(Date.parse(record.createdAt))
   );

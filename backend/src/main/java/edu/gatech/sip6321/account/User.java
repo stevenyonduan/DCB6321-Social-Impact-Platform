@@ -45,6 +45,10 @@ public class User implements Persistable<UUID> {
     @Column(name = "organization_id")
     private UUID organizationId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "organization_role", length = 20)
+    private OrganizationRole organizationRole;
+
     @Generated(event = EventType.INSERT)
     @Column(
             name = "created_at",
@@ -111,6 +115,10 @@ public class User implements Persistable<UUID> {
 
     public UUID getOrganizationId() {
         return organizationId;
+    }
+
+    public OrganizationRole getOrganizationRole() {
+        return organizationRole;
     }
 
     public Instant getCreatedAt() {

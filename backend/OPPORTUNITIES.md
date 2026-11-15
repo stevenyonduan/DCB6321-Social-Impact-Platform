@@ -1,5 +1,11 @@
 # Opportunity publishing API
 
+> Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
+> global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
+> volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
+> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
+> new backend. Original ticket/deployment/verification history below is historical.
+
 This ticket implements immediate publication and authenticated organization-scoped listing of
 volunteer opportunities. It reuses Supabase Auth identity verification, persisted application
 roles, `users.organization_id`, and the existing organization model. No frontend code changes,

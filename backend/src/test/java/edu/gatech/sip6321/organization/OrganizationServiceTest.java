@@ -15,7 +15,8 @@ import tools.jackson.databind.json.JsonMapper;
 class OrganizationServiceTest {
     private final ProfileService profiles = mock(ProfileService.class);
     private final OrganizationRepository organizations = mock(OrganizationRepository.class);
-    private final OrganizationService service = new OrganizationService(profiles, organizations);
+    private final OrganizationService service =
+            new OrganizationService(new OrganizationAuthorization(profiles), organizations);
     private final UUID id = UUID.randomUUID();
     private final List<String> authorization = List.of("Bearer unit-access");
 
@@ -43,9 +44,10 @@ class OrganizationServiceTest {
                                 null,
                                 null,
                                 association,
+                                null,
                                 null);
                 when(profiles.me(authorization)).thenReturn(account);
-                if (role == UserRole.ORGANIZATION && id.equals(association)) continue;
+
                 assertThatThrownBy(() -> service.patch(authorization, id, null))
                         .isInstanceOf(OrganizationFailure.class)
                         .extracting("status")
