@@ -139,3 +139,45 @@ describe('account API failures', () => {
     );
   });
 });
+
+describe('organization profile contract', () => {
+  const base = {
+    id: 'user-id',
+    email: 'sam@example.test',
+    role: 'STANDARD',
+    firstName: 'Sam',
+    lastName: 'Example',
+    bio: null,
+    avatarUrl: null,
+    createdAt: '2026-11-12T18:00:00Z',
+  };
+  it.each([null, 'OWNER', 'ADMIN'])(
+    'accepts volunteer profile with organization role %s',
+    async (role) => {
+      const profile = {
+        ...base,
+        organizationId: role === null ? null : 'org-id',
+        organizationRole: role,
+      };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(profile)));
+      await expect(getProfile('access')).resolves.toEqual(profile);
+    },
+  );
+  it.each([
+    { organizationId: null, organizationRole: 'OWNER' },
+    { organizationId: 'org-id', organizationRole: null },
+    { organizationId: 'org-id', organizationRole: 'STANDARD' },
+    { organizationId: null },
+  ])(
+    'rejects invalid organization profile associations',
+    async (association) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(json({ ...base, ...association })),
+      );
+      await expect(getProfile('access')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
+});

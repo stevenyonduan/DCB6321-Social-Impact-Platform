@@ -10,7 +10,6 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import java.time.Instant;
-import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
@@ -45,6 +44,10 @@ public class User implements Persistable<UUID> {
 
     @Column(name = "organization_id")
     private UUID organizationId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "organization_role", length = 20)
+    private OrganizationRole organizationRole;
 
     @Generated(event = EventType.INSERT)
     @Column(
@@ -114,12 +117,8 @@ public class User implements Persistable<UUID> {
         return organizationId;
     }
 
-    public void assignCreatedOrganization(UUID organizationId) {
-        if (role != UserRole.STANDARD || this.organizationId != null) {
-            throw new IllegalStateException("Account is ineligible to own a new organization");
-        }
-        this.organizationId = Objects.requireNonNull(organizationId);
-        role = UserRole.ORGANIZATION;
+    public OrganizationRole getOrganizationRole() {
+        return organizationRole;
     }
 
     public Instant getCreatedAt() {

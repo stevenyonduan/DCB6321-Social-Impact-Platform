@@ -1,7 +1,6 @@
 package edu.gatech.sip6321.opportunity;
 
-import edu.gatech.sip6321.account.UserRole;
-import edu.gatech.sip6321.auth.ProfileService;
+import edu.gatech.sip6321.organization.OrganizationAuthorization;
 import edu.gatech.sip6321.organization.OrganizationRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -16,17 +15,17 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "SIP_AUTH_ENABLED", havingValue = "true")
 @Transactional(readOnly = true)
 public class OpportunityService {
-    private final ProfileService profiles;
+    private final OrganizationAuthorization authorization;
     private final OrganizationRepository organizations;
     private final EventRepository events;
     private final Clock clock;
 
     public OpportunityService(
-            ProfileService profiles,
+            OrganizationAuthorization authorization,
             OrganizationRepository organizations,
             EventRepository events,
             Clock clock) {
-        this.profiles = profiles;
+        this.authorization = authorization;
         this.organizations = organizations;
         this.events = events;
         this.clock = clock;
@@ -35,9 +34,7 @@ public class OpportunityService {
     @Transactional
     public OpportunityResponse publish(
             List<String> authorization, PublishOpportunityRequest request) {
-        var account = profiles.me(authorization);
-        if (account.role() != UserRole.ORGANIZATION || account.organizationId() == null)
-            throw OpportunityFailure.forbidden();
+        var account = this.authorization.manager(authorization);
         requireOrganization(account.organizationId());
         if (request == null) throw OpportunityFailure.invalid();
         // Compare the stored-precision start to the full-precision server clock.
@@ -49,7 +46,7 @@ public class OpportunityService {
 
     public OpportunityPage list(
             List<String> authorization, UUID organizationId, int page, int size) {
-        profiles.me(authorization);
+        this.authorization.account(authorization);
         if (organizationId == null || page < 0 || page > 10000 || size < 1 || size > 100)
             throw OpportunityFailure.invalid();
         requireOrganization(organizationId);

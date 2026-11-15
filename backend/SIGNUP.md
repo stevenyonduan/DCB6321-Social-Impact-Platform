@@ -1,5 +1,11 @@
 # Standard account signup
 
+> Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
+> global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
+> volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
+> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
+> new backend. Original ticket/deployment/verification history below is historical.
+
 This ticket implements only `POST /api/auth/signup`. The project owner approved email/password
 signup with **Confirm email disabled**, JSON session delivery after application persistence, and
 operator-assisted reconciliation after persistent partial failures. This supersedes the earlier

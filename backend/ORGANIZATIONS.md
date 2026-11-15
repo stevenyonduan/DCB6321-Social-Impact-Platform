@@ -1,8 +1,14 @@
 # Organization profiles
 
-The API supports authenticated organization creation and reads, plus owner-authorized editing.
-Users create organizations after signing in with an existing account. Signup and login retain their
-existing contracts. A frontend creation form can call the endpoint documented below.
+> Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
+> global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
+> volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
+> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
+> new backend. Original ticket/deployment/verification history below is historical.
+
+Organization creation, reads, and editing are available through the current management contract
+linked above. The creation/profile/opportunity screens merged into main are retained and use the
+organization-specific OWNER/ADMIN role. The original ticket details below are historical.
 
 ## Persistence and relationships
 
@@ -21,9 +27,9 @@ PostgreSQL 13+ supplies `gen_random_uuid()` without an extension; it provides th
 semantics as the DDD's `uuid_generate_v4()` without depending on Supabase extension search paths.
 JPA generates UUID v4 IDs for inserts; SQL inserts can use the database default. Hibernate reads
 verification and timestamp defaults back after insert. Neither column is updated by JPA.
-`OrganizationProvisioningService.create(name, description, website)` is an internal transactional
-creation boundary. The authenticated creation flow calls it in the same transaction that assigns
-the existing account as owner.
+`OrganizationProvisioningService.create(name, description, website)` remains an internal record
+helper. Authenticated creation uses OrganizationManagementService to atomically insert the record,
+claim the account's OWNER association, and record the audit entry.
 
 `users.organization_id` remains a nullable UUID scalar in JPA and gains the validated
 `users_organization_fkey` referencing `organizations.id`, with NO ACTION for delete/update.
@@ -42,13 +48,12 @@ provider availability is required. Services enforce authorization, including whe
 
 | Operation | Rule |
 | --- | --- |
-| Create | Persisted STANDARD role with no organization association |
+| Create | Any registered account with null organization association/role |
 | Read by ID | Any authenticated identity with an application account |
-| Read `/me` | Persisted ORGANIZATION role and non-null organization association |
-| Edit by ID | Persisted ORGANIZATION role and association exactly equal to target UUID |
-| STANDARD / ADMIN edit | 403, including when associated with the target |
-| ORGANIZATION without association | 403 |
-| ORGANIZATION editing another ID | 403 before existence lookup, including nonexistent IDs |
+| Read `/me` | Persisted OWNER/ADMIN organization role and non-null association |
+| Edit by ID | Persisted OWNER/ADMIN organization role and matching association |
+| Global roles alone | Do not authorize editing or publishing |
+| Manager editing another ID | 403 before existence lookup, including nonexistent IDs |
 
 Successful reads/patches return 200 with `Cache-Control: no-store`. All responses expose only the
 six fields below. No application account, email, token, or entity lifecycle property is serialized.
@@ -71,15 +76,16 @@ Content-Type: application/json
 Only `name`, `description`, and `website` are accepted. `name` is required. The other two fields
 may be omitted or null. Field validation uses the same rules as PATCH.
 
-The backend verifies the bearer token, locks the existing account row, and creates an unverified
-organization and assigns the account's `ORGANIZATION` role and `organizationId` in one transaction.
-An eligible request returns `201 Created`, `Location: /api/organizations/{id}`, `Cache-Control:
-no-store`, and the same six-field response as GET. Fetch `/api/users/me` again to update the
-frontend's role and organization association. The existing session can make that request.
+The backend verifies the bearer token and creates an unverified organization, conditionally claims
+the caller's previously null organization association as OWNER, and records the audit in one
+transaction. The global role is preserved. An eligible request returns 201, Location, no-store, and
+`{"organization":{...six profile fields...},"ownerId":"CALLER_UUID","organizationRole":"OWNER"}`.
+See [the complete JSON contract](ORGANIZATION_MANAGEMENT.md#rest-contracts-and-complete-http-examples).
+The frontend unwraps `organization` and reloads `/api/users/me` to refresh management permissions.
 
-An already-linked `STANDARD` or `ORGANIZATION` account receives `409 ORGANIZATION_ALREADY_ASSOCIATED`,
-including on a duplicate attempt after a successful commit. `ADMIN` and an unlinked `ORGANIZATION`
-account receive `403 FORBIDDEN`. After a lost response, reload `/api/users/me` to find any assignment.
+Already-associated accounts receive 409 MEMBERSHIP_CONFLICT, including duplicate creation attempts.
+An unassociated global ADMIN or ORGANIZATION account is eligible like any other registered account.
+After a lost response, reload `/api/users/me` to discover a committed association before retrying.
 
 ### Read or edit an organization
 
@@ -154,7 +160,7 @@ Raw database/provider exceptions, rejected values, and bearer tokens are never l
 | 403 | FORBIDDEN | Role, association, or target ownership denied |
 | 404 | ORGANIZATION_NOT_FOUND | Authorized read target absent, or own linked record absent |
 | 405 | METHOD_NOT_ALLOWED | Unsupported method |
-| 409 | ORGANIZATION_ALREADY_ASSOCIATED | Account already linked on creation |
+| 409 | MEMBERSHIP_CONFLICT | Account already linked or concurrent claim lost on creation |
 | 415 | UNSUPPORTED_MEDIA_TYPE | POST and PATCH require application/json |
 | 429 | AUTH_RATE_LIMITED | Existing Auth rate-limit convention |
 | 502 | AUTH_RESPONSE_INVALID | Invalid upstream Auth response |

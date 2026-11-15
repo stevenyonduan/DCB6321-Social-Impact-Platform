@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import edu.gatech.sip6321.account.UserRole;
-import edu.gatech.sip6321.account.UserService;
 import edu.gatech.sip6321.auth.ProfileFailure;
 import edu.gatech.sip6321.auth.ProfileResponse;
 import edu.gatech.sip6321.auth.ProfileService;
@@ -17,11 +16,7 @@ class OrganizationServiceTest {
     private final ProfileService profiles = mock(ProfileService.class);
     private final OrganizationRepository organizations = mock(OrganizationRepository.class);
     private final OrganizationService service =
-            new OrganizationService(
-                    profiles,
-                    organizations,
-                    mock(UserService.class),
-                    mock(OrganizationProvisioningService.class));
+            new OrganizationService(new OrganizationAuthorization(profiles), organizations);
     private final UUID id = UUID.randomUUID();
     private final List<String> authorization = List.of("Bearer unit-access");
 
@@ -49,9 +44,10 @@ class OrganizationServiceTest {
                                 null,
                                 null,
                                 association,
+                                null,
                                 null);
                 when(profiles.me(authorization)).thenReturn(account);
-                if (role == UserRole.ORGANIZATION && id.equals(association)) continue;
+
                 assertThatThrownBy(() -> service.patch(authorization, id, null))
                         .isInstanceOf(OrganizationFailure.class)
                         .extracting("status")

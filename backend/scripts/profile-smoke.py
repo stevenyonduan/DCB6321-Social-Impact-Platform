@@ -60,9 +60,11 @@ def main():
     status, cache, profile = request("/api/users/me", token=token)
     del token
     fields = {"id", "email", "role", "firstName", "lastName", "bio",
-              "avatarUrl", "organizationId", "createdAt"}
+              "avatarUrl", "organizationId", "organizationRole", "createdAt"}
     ok = (status == 200 and cache == "no-store" and set(profile) == fields
-          and profile.get("id") == expected_id)
+          and profile.get("id") == expected_id
+          and profile.get("organizationRole") in (None, "OWNER", "ADMIN")
+          and (profile.get("organizationId") is None) == (profile.get("organizationRole") is None))
     print("Profile HTTP", status, "own_profile_and_contract_valid=", ok)
     for token in (None, "invalid-smoke-token"):
         status, cache, body = request("/api/users/me", token=token)

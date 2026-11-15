@@ -51,7 +51,7 @@ export function ProfileOrganization({
           >
             {name ?? 'View organization'}
           </PageLink>
-        ) : profile.role === 'STANDARD' ? (
+        ) : profile.organizationRole === null ? (
           <button
             ref={trigger}
             className="text-link create-organization-link"

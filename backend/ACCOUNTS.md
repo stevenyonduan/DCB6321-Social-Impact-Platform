@@ -1,5 +1,11 @@
 # Account persistence
 
+> Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
+> global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
+> volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
+> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
+> new backend. Original ticket/deployment/verification history below is historical.
+
 The subsequent [organization profile ticket](ORGANIZATIONS.md) adds V002 and the deferred
 `users.organization_id` foreign key. V001 and its original deployment history below remain
 unchanged. Organization creation/read/edit support does not implement organization signup or

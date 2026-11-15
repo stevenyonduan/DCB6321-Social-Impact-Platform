@@ -4,14 +4,18 @@ Georgia Tech DCB6321 Senior Design project for client Tracy Dansby. SIP connects
 
 This repository prepares Development Readiness Sections 1–3 and includes the authorized **SOW frontend**: a landing page, backend-connected login/sign-up, and a sample community feed with opportunities. See [frontend demo instructions](frontend/DEMO.md). The backend now includes an internal [account persistence layer and deployment record](backend/ACCOUNTS.md). The project owner successfully applied V001 in Supabase; `public.users` has nine expected columns, its Supabase Auth UUID foreign key, and RLS enabled by the migration. The earlier profile-ticket verification passed all 269 tests, including 18 isolated PostgreSQL integration tests; see [profile verification](backend/PROFILE.md#verification-record). The subsequently approved backend [single-step signup endpoint](backend/SIGNUP.md) now integrates Supabase Auth and account persistence when explicitly enabled. The subsequently approved [login endpoint](backend/LOGIN.md) authenticates existing accounts without provisioning. The authenticated [profile endpoint](backend/PROFILE.md) reads the current application account using a verified Supabase access token. The frontend now calls these endpoints and uses the Supabase browser client for persistent sessions, refresh, and current-session sign-out. Live local signup, login, own-profile loading, session persistence across reload, and logout were verified on November 5, 2026. The Render deployment remains unverified. Section 4 belongs to another teammate.
 
-The backend [opportunity publishing API](backend/OPPORTUNITIES.md) adds immediate creation by
-associated ORGANIZATION accounts and authenticated, paginated upcoming-only organization lists.
-The approved PR #19 extension rejects past/equal starts using the backend clock and supports
-INTERNAL registration (default) or an EXTERNAL registration URL; actual registration remains
-separate work. These are extensions to the original DDD. V003 is updated in place because the
-owner confirms it has not been applied to Supabase. Apply
-V003 manually after V001/V002 and review JDBC access before deployment; no live migration or deployment
-has been performed by this ticket. Frontend opportunity previews are unchanged.
+The backend now supports [organization creation and OWNER/ADMIN management](backend/ORGANIZATION_MANAGEMENT.md).
+Everyone remains a volunteer; organization authority depends on the persisted organization association
+and separate OWNER/ADMIN role. Both roles can edit their organization and publish future opportunities;
+only OWNER can add/remove registered ADMINs. The current profile adds nullable `organizationRole`.
+The owner confirms V001–V003 are already applied to Supabase. They are unchanged: never edit/rerun
+them. Review the read-only preflight and additive V004, reconcile legacy roles explicitly, and apply
+V004 manually before deploying the new backend. No live SQL or deployment is performed here.
+[Opportunity contracts](backend/OPPORTUNITIES.md) retain INTERNAL/EXTERNAL registration configuration,
+future-only publication, upcoming-only paginated lists, and existing validation.
+The organization-creation, organization-profile, and opportunity screens subsequently merged into
+main are preserved. Their API adapter and edit/publish controls now use the OWNER/ADMIN contract;
+new ADMIN-team management screens remain separate work.
 
 ## Approved stack and repository
 
@@ -151,14 +155,12 @@ The low-fidelity Figma prototype is linked above, but its frames/interactions ha
 
 ## Authenticated profile testing
 
-`GET /api/users/me` returns the verified caller's nine application profile fields with `Cache-Control: no-store`. See [profile contract and error codes](backend/PROFILE.md). With an authorized development backend running, use `SIP_TEST_BASE_URL=http://127.0.0.1:8080 python3 backend/scripts/profile-smoke.py` from the repository root. After a separately approved deployment, substitute the existing Render HTTPS origin. The script prompts for credentials, uses login's access token, and prints only statuses and checks. No new migration or environment variables are needed.
+`GET /api/users/me` returns the verified caller's ten application profile fields with `Cache-Control: no-store`. See [profile contract and error codes](backend/PROFILE.md). With an authorized development backend running, use `SIP_TEST_BASE_URL=http://127.0.0.1:8080 python3 backend/scripts/profile-smoke.py` from the repository root. After a separately approved deployment, substitute the existing Render HTTPS origin. The script prompts for credentials, uses login's access token, and prints only statuses and checks. No new migration or environment variables are needed.
 
 ## Organization profile API
 
-Authenticated organization reads and authorized owner edits are documented in
-[backend/ORGANIZATIONS.md](backend/ORGANIZATIONS.md), including frontend request/response types,
-the manual V002 migration, Supabase/Render deployment checks, and the separate organization-signup
-follow-up. Apply V002 before deploying this backend change; do not rerun the already-applied V001.
-Organization self-registration is not yet supported. Backend verification passed 298 ordinary tests
-and 27 isolated PostgreSQL tests with zero failures, errors, or skips; see the
-[verification record](backend/ORGANIZATIONS.md#verification-record--november-11-2026).
+Authenticated organization reads, profile editing by OWNER/ADMIN, creation, management-team listing,
+and OWNER-only addition/removal are documented in [organization management](backend/ORGANIZATION_MANAGEMENT.md).
+This guide includes current contracts, exact V004/preflight SQL, explicit legacy reconciliation,
+concurrency/security rules, verification results and manual Supabase/Render rollout steps. The earlier
+[organization profile guide](backend/ORGANIZATIONS.md) retains the original ticket's history.

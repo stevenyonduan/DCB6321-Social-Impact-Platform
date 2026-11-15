@@ -58,6 +58,7 @@ class OrganizationPersistenceIT {
 
     @Autowired OrganizationProvisioningService provisioning;
     @Autowired OrganizationService service;
+    @Autowired OrganizationManagementService management;
     @Autowired OrganizationRepository organizations;
     @Autowired UserService users;
     @Autowired ObjectMapper json;
@@ -86,11 +87,17 @@ class OrganizationPersistenceIT {
                         new FileSystemResource("db/migrations/V002__create_organizations.sql"))
                 .execute(dataSource);
         assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(before);
+        new ResourceDatabasePopulator(
+                        new FileSystemResource("db/migrations/V003__create_events.sql"))
+                .execute(dataSource);
+        edu.gatech.sip6321.OrganizationManagementMigrations.apply(dataSource);
     }
 
     @BeforeEach
     void setup() {
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("DELETE FROM public.organization_management_audit");
+        jdbc.update("DELETE FROM public.events");
         jdbc.update("DELETE FROM public.users");
         jdbc.update("DELETE FROM public.organizations");
         jdbc.update("DELETE FROM auth.users");
@@ -105,9 +112,10 @@ class OrganizationPersistenceIT {
         jdbc.update("INSERT INTO auth.users VALUES (?)", id);
         users.createStandardAccount(id, id + "@example.test", "First", "Last");
         jdbc.update(
-                "UPDATE public.users SET role=?, organization_id=? WHERE id=?",
+                "UPDATE public.users SET role=?, organization_id=?, organization_role=? WHERE id=?",
                 role,
                 organization,
+                organization == null ? null : "ADMIN",
                 id);
         return id;
     }
@@ -139,7 +147,9 @@ class OrganizationPersistenceIT {
             executor.shutdownNow();
         }
         var owner = users.getById(creator);
-        assertThat(owner.getRole()).isEqualTo(UserRole.ORGANIZATION);
+        assertThat(owner.getRole()).isEqualTo(UserRole.STANDARD);
+        assertThat(owner.getOrganizationRole())
+                .isEqualTo(edu.gatech.sip6321.account.OrganizationRole.OWNER);
         assertThat(owner.getOrganizationId()).isNotNull();
         assertThat(organizations.count()).isEqualTo(2);
         assertThat(service.me(AUTH).id()).isEqualTo(owner.getOrganizationId());
@@ -158,16 +168,15 @@ class OrganizationPersistenceIT {
         UUID creator = account("STANDARD", null);
         when(auth.verifyAccessToken("isolated-access")).thenReturn(creator);
         jdbc.execute(
-                "ALTER TABLE public.users ADD CONSTRAINT test_reject_assignment CHECK (role <> 'ORGANIZATION' OR id <> '"
+                "ALTER TABLE public.users ADD CONSTRAINT test_reject_assignment CHECK (organization_role <> 'OWNER' OR id <> '"
                         + creator
                         + "'::uuid)");
         try {
             assertThatThrownBy(
                             () ->
-                                    service.create(
+                                    management.create(
                                             AUTH,
-                                            OrganizationPatch.fromJson(
-                                                    json.readTree("{\"name\":\"Garden\"}"))))
+                                            new CreateOrganizationRequest("Garden", null, null)))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThat(organizations.count()).isEqualTo(1);
             var account = users.getById(creator);
@@ -309,8 +318,8 @@ class OrganizationPersistenceIT {
         for (UUID identity :
                 List.of(
                         account("ORGANIZATION", other),
-                        account("STANDARD", organizationId),
-                        account("ADMIN", organizationId),
+                        account("STANDARD", null),
+                        account("ADMIN", null),
                         account("ORGANIZATION", null))) {
             when(auth.verifyAccessToken("isolated-access")).thenReturn(identity);
             var before = jdbc.queryForList("SELECT * FROM public.organizations ORDER BY id");

@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import edu.gatech.sip6321.account.*;
+import edu.gatech.sip6321.account.OrganizationRole;
 import edu.gatech.sip6321.auth.*;
 import java.time.Instant;
 import java.util.Optional;
@@ -26,12 +27,19 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(
-        controllers = OrganizationController.class,
+        controllers = {OrganizationController.class, OrganizationManagementController.class},
         properties = {
             "SIP_AUTH_ENABLED=true",
             "SIP_CORS_ALLOWED_ORIGINS=https://frontend.example.test"
         })
-@Import({OrganizationService.class, ProfileService.class, OrganizationExceptionHandler.class})
+@Import({
+    OrganizationService.class,
+    OrganizationManagementService.class,
+    ManagementAttemptLimiter.class,
+    ProfileService.class,
+    edu.gatech.sip6321.organization.OrganizationAuthorization.class,
+    OrganizationExceptionHandler.class
+})
 @ExtendWith(OutputCaptureExtension.class)
 class OrganizationControllerTest {
     private static final UUID ID = UUID.randomUUID();
@@ -42,7 +50,8 @@ class OrganizationControllerTest {
     @MockitoBean SupabaseAuthClient auth;
     @MockitoBean UserService users;
     @MockitoBean OrganizationRepository organizations;
-    @MockitoBean OrganizationProvisioningService provisioning;
+    @MockitoBean UserRepository userRepository;
+    @MockitoBean org.springframework.jdbc.core.JdbcTemplate jdbc;
     private User account;
     private Organization organization;
 
@@ -50,7 +59,8 @@ class OrganizationControllerTest {
     void setup() {
         account = mock(User.class);
         when(account.getId()).thenReturn(USER);
-        when(account.getRole()).thenReturn(UserRole.ORGANIZATION);
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.OWNER);
         when(account.getOrganizationId()).thenReturn(ID);
         when(auth.verifyAccessToken("test-access")).thenReturn(USER);
         when(users.getById(USER)).thenReturn(account);
@@ -59,14 +69,31 @@ class OrganizationControllerTest {
         when(organizations.findById(ID)).thenReturn(Optional.of(organization));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"OWNER", "ADMIN"})
+    void bothOrganizationRolesCanEditWithStandardGlobalAccount(String role) throws Exception {
+        when(account.getOrganizationRole()).thenReturn(OrganizationRole.valueOf(role));
+        when(account.getRole()).thenReturn(UserRole.STANDARD);
+        mvc.perform(
+                        patch(PATH)
+                                .header("Authorization", "Bearer test-access")
+                                .contentType("application/json")
+                                .content("{\"description\":\"Managed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value("Managed"));
+    }
+
     @Test
     void createsAnUnverifiedOrganizationForTheAuthenticatedStandardAccount() throws Exception {
-        when(users.lockById(USER)).thenReturn(account);
+        when(account.getOrganizationRole()).thenReturn(null);
         when(account.getRole()).thenReturn(UserRole.STANDARD);
         when(account.getOrganizationId()).thenReturn(null);
-        when(provisioning.create("Garden", null, null))
-                .thenReturn(
-                        new OrganizationResponse(ID, "Garden", null, null, false, Instant.EPOCH));
+        var created = mock(Organization.class);
+        when(created.getId()).thenReturn(ID);
+        when(created.getName()).thenReturn("Garden");
+        when(created.getCreatedAt()).thenReturn(Instant.EPOCH);
+        when(organizations.saveAndFlush(any())).thenReturn(created);
+        when(userRepository.claimOrganization(USER, ID, OrganizationRole.OWNER)).thenReturn(1);
 
         mvc.perform(
                         post("/api/organizations")
@@ -76,9 +103,9 @@ class OrganizationControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", PATH))
                 .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.id").value(ID.toString()))
-                .andExpect(jsonPath("$.isVerified").value(false));
-        verify(account).assignCreatedOrganization(ID);
+                .andExpect(jsonPath("$.organization.id").value(ID.toString()))
+                .andExpect(jsonPath("$.organization.isVerified").value(false));
+        verify(userRepository).claimOrganization(USER, ID, OrganizationRole.OWNER);
         verify(auth).verifyAccessToken("test-access");
     }
 
@@ -98,7 +125,7 @@ class OrganizationControllerTest {
                                 .contentType("application/json")
                                 .content(body))
                 .andExpect(status().isBadRequest());
-        verifyNoInteractions(provisioning, users);
+        verifyNoInteractions(userRepository, users);
     }
 
     @Test
@@ -106,7 +133,7 @@ class OrganizationControllerTest {
         String body = "{\"name\":\"Garden\"}";
         mvc.perform(post("/api/organizations").contentType("application/json").content(body))
                 .andExpect(status().isUnauthorized());
-        when(users.lockById(USER)).thenThrow(new AccountNotFoundException());
+        when(users.getById(USER)).thenThrow(new AccountNotFoundException());
         mvc.perform(
                         post("/api/organizations")
                                 .header("Authorization", "Bearer test-access")
@@ -114,22 +141,22 @@ class OrganizationControllerTest {
                                 .content(body))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_PROVISIONING_REQUIRED"));
-        doReturn(account).when(users).lockById(USER);
+        doReturn(account).when(users).getById(USER);
         mvc.perform(
                         post("/api/organizations")
                                 .header("Authorization", "Bearer test-access")
                                 .contentType("application/json")
                                 .content(body))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ORGANIZATION_ALREADY_ASSOCIATED"));
+                .andExpect(jsonPath("$.code").value("MEMBERSHIP_CONFLICT"));
         when(account.getRole()).thenReturn(UserRole.ADMIN);
         mvc.perform(
                         post("/api/organizations")
                                 .header("Authorization", "Bearer test-access")
                                 .contentType("application/json")
                                 .content(body))
-                .andExpect(status().isForbidden());
-        verifyNoInteractions(provisioning);
+                .andExpect(status().isConflict());
+        verifyNoInteractions(userRepository);
     }
 
     @Test
@@ -181,7 +208,10 @@ class OrganizationControllerTest {
         if (kind.equals("OTHER_ORGANIZATION"))
             when(account.getOrganizationId()).thenReturn(UUID.randomUUID());
         else if (kind.equals("UNASSOCIATED")) when(account.getOrganizationId()).thenReturn(null);
-        else when(account.getRole()).thenReturn(UserRole.valueOf(kind));
+        else {
+            when(account.getRole()).thenReturn(UserRole.valueOf(kind));
+            when(account.getOrganizationRole()).thenReturn(null);
+        }
         mvc.perform(
                         patch(PATH)
                                 .header("Authorization", "Bearer test-access")

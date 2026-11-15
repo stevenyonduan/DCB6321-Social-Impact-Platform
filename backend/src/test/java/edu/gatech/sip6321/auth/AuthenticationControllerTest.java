@@ -98,7 +98,15 @@ class AuthenticationControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"role", "id", "organizationId", "createdAt", "unexpected"})
+    @ValueSource(
+            strings = {
+                "role",
+                "id",
+                "organizationId",
+                "organizationRole",
+                "createdAt",
+                "unexpected"
+            })
     void rejectsAllUnknownProperties(String field) throws Exception {
         var body = valid();
         body.put(field, "ADMIN");

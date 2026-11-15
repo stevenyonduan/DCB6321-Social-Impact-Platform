@@ -1,29 +1,39 @@
 # API and interfaces — Detailed Design Document requirements
 
+## Approved organization management contract
+
+[Organization management](../backend/ORGANIZATION_MANAGEMENT.md) is the current complete contract,
+superseding global ORGANIZATION-role authorization for this scope. Everyone retains volunteer access.
+`POST /api/organizations` creates an organization and OWNER atomically (201).
+`POST /api/organizations/me/admins` adds an existing unassociated registered user as ADMIN (OWNER only, 204).
+`GET /api/organizations/me/admins` lists the caller's team (OWNER/ADMIN, 200).
+`DELETE /api/organizations/me/admins/{userId}` removes an associated ADMIN (OWNER only, 204).
+The own-profile response preserves its former fields and adds nullable `organizationRole`.
+See the guide for complete examples, validation, safe conflicts, audit, throttle and deployment order.
+
 ## Subsequently approved opportunity contract
 
-`POST /api/organizations/me/opportunities` returns 201 for a persisted ORGANIZATION manager.
+`POST /api/organizations/me/opportunities` returns 201 for a persisted organization OWNER or ADMIN.
 The server derives organizationId/creatorId; unknown fields are rejected.
 `GET /api/organizations/{organizationId}/opportunities?page=0&size=20` returns an authenticated
 paginated object ordered by event_start/id ascending, including upcoming events only. Page is 0–10000,
 size 1–100. See [opportunities](../backend/OPPORTUNITIES.md) for complete JSON/TypeScript contracts,
-validation, permissions, V003, tests, and manual deployment. ADMIN cannot publish.
+validation, permissions, V003, tests, and manual deployment. Global roles alone grant no publishing authority.
 The approved PR #19 extension requires starts strictly after the injected backend clock and
 adds registrationType (INTERNAL default when omitted, or EXTERNAL) and registrationUrl (null
 for INTERNAL; required valid HTTP(S) destination for EXTERNAL) to creation/list responses.
 Explicit invalid/null types fail rather than default. SQL filters upcoming events before paging;
 historical rows remain stored. These are approved extensions to the original DDD, not original
-schema fields. V003 remains unapplied to Supabase and is updated in place; no V004 is needed.
+schema fields. The owner confirms V001–V003 are applied; do not edit/rerun them. Additive V004 is required for the new organization role model.
 
 ## Subsequently approved authentication contracts
 
 The organization API provides authenticated `POST /api/organizations` for a signed-in
-STANDARD account without an organization. It atomically creates an unverified organization and
-links the caller as its owner. Signup remains separate. The organization-profile endpoints are
+registered account without an organization, regardless of global role. It atomically creates an
+unverified organization and links the caller as OWNER while preserving volunteer permissions. Signup remains separate. The organization-profile endpoints are
 `GET /api/organizations/{id}`, `GET /api/organizations/me`, and owner-authorized
 `PATCH /api/organizations/{id}`. See [organization profiles](../backend/ORGANIZATIONS.md)
-for JSON/TypeScript contracts, errors, V002 and manual deployment. Only persisted ORGANIZATION
-accounts associated with the target can edit; ADMIN has no override.
+for JSON/TypeScript contracts, errors, V002 and manual deployment. Only persisted organization OWNER/ADMIN accounts associated with the target can edit; global ADMIN has no override. Organization creation is now supported through the management contract above.
 
 The project owner approved and authorized `POST /api/auth/signup` with email confirmation disabled,
 STANDARD-only account creation, server-side validation of the returned Supabase identity, and

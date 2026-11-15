@@ -85,8 +85,9 @@ class ProfileControllerTest {
                         "bio",
                         "avatarUrl",
                         "organizationId",
+                        "organizationRole",
                         "createdAt");
-        for (String name : new String[] {"bio", "avatarUrl", "organizationId"})
+        for (String name : new String[] {"bio", "avatarUrl", "organizationId", "organizationRole"})
             assertThat(body.path(name).isNull()).isTrue();
         assertThat(result.getResponse().getContentAsString())
                 .doesNotContain(TOKEN, "refresh_token", "password", "session", "newRecord");
@@ -102,11 +103,14 @@ class ProfileControllerTest {
         when(user.getBio()).thenReturn("Volunteer");
         when(user.getAvatarUrl()).thenReturn("https://example.test/avatar.png");
         when(user.getOrganizationId()).thenReturn(organization);
+        when(user.getOrganizationRole())
+                .thenReturn(edu.gatech.sip6321.account.OrganizationRole.OWNER);
         mvc.perform(get("/api/users/me").header("Authorization", "bearer   " + TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bio").value("Volunteer"))
                 .andExpect(jsonPath("$.avatarUrl").value("https://example.test/avatar.png"))
-                .andExpect(jsonPath("$.organizationId").value(organization.toString()));
+                .andExpect(jsonPath("$.organizationId").value(organization.toString()))
+                .andExpect(jsonPath("$.organizationRole").value("OWNER"));
     }
 
     @Test

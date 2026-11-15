@@ -32,13 +32,13 @@ function organizationProfile(value: unknown): value is OrganizationProfile {
   );
 }
 
-export function createOrganization(
+export async function createOrganization(
   input: OrganizationInput,
   accessToken: string,
   signal: AbortSignal,
 ) {
   const { name, description, website } = input;
-  return request(
+  const created = await request(
     '/organizations',
     {
       method: 'POST',
@@ -49,14 +49,27 @@ export function createOrganization(
       },
       body: JSON.stringify({ name, description, website }),
     },
-    organizationProfile,
+    (
+      value,
+    ): value is {
+      organization: OrganizationProfile;
+      ownerId: string;
+      organizationRole: 'OWNER';
+    } =>
+      object(value) &&
+      organizationProfile(value.organization) &&
+      typeof value.ownerId === 'string' &&
+      value.organizationRole === 'OWNER',
     signal,
   );
+  return created.organization;
 }
 
 export function canEditOrganization(profile: Profile, organizationId: string) {
   return (
-    profile.role === 'ORGANIZATION' && profile.organizationId === organizationId
+    (profile.organizationRole === 'OWNER' ||
+      profile.organizationRole === 'ADMIN') &&
+    profile.organizationId === organizationId
   );
 }
 

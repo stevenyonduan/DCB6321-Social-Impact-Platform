@@ -2,6 +2,7 @@ package edu.gatech.sip6321.opportunity;
 
 import edu.gatech.sip6321.auth.ProfileFailure;
 import edu.gatech.sip6321.auth.SignupExceptionHandler;
+import edu.gatech.sip6321.organization.OrganizationFailure;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -15,6 +16,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class OpportunityExceptionHandler {
     @ExceptionHandler(OpportunityFailure.class)
     ResponseEntity<SignupExceptionHandler.Error> failure(OpportunityFailure failure) {
+        return error(failure.status(), failure.code(), failure.getMessage());
+    }
+
+    @ExceptionHandler(OrganizationFailure.class)
+    ResponseEntity<SignupExceptionHandler.Error> organization(OrganizationFailure failure) {
         return error(failure.status(), failure.code(), failure.getMessage());
     }
 

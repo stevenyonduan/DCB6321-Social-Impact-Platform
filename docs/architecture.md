@@ -31,7 +31,7 @@ The [data model and original relationship diagram](data-model.md#relationship-di
 - The [organization profile API](../backend/ORGANIZATIONS.md) extends account/profile responsibilities
   with JPA organization persistence and V002. It reuses Supabase-backed ProfileService verification,
   enforces persisted role/association ownership in the service layer, and exposes allowlisted DTOs.
-  Internal organization creation has no public endpoint; organization signup is a separate phase.
+  The approved [organization-management extension](../backend/ORGANIZATION_MANAGEMENT.md) adds public transactional creation and OWNER-only admin management, using a shared service-layer OrganizationAuthorization helper across organization, opportunity and team operations. Global roles are preserved but do not authorize organization management.
 
 - React calls Spring Boot REST endpoints over HTTPS with JSON. [api.md](api.md) records the DDD interface requirements and subsequent authentication/profile contracts; other endpoint contracts remain unspecified. The scaffold health endpoint is documented separately.
 - Spring services apply authorization and business rules before using database repositories. The account persistence ticket adds Spring Data JPA and a manually applied, versioned users-table migration; see [account persistence](../backend/ACCOUNTS.md). Browser access must not bypass backend business logic.
