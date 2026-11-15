@@ -64,7 +64,8 @@ svg {
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 3px solid var(--purple);
   outline-offset: 4px;
 }
@@ -421,7 +422,8 @@ label {
   font-weight: 500;
   margin-bottom: 16px;
 }
-input {
+input,
+textarea {
   display: block;
   width: 100%;
   min-width: 0;
@@ -563,6 +565,72 @@ input::placeholder {
 }
 .profile-empty {
   color: var(--muted);
+}
+.organization-intro {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.organization-label {
+  margin-bottom: 4px;
+}
+.organization-verified {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--green);
+}
+.organization-website {
+  color: var(--green);
+  text-decoration: underline;
+}
+.organization-website svg {
+  vertical-align: middle;
+}
+.create-organization-link:hover {
+  text-decoration: none;
+}
+.organization-wide {
+  grid-column: 1 / -1;
+}
+.organization-status {
+  padding-block: 36px;
+}
+.organization-status > * + * {
+  margin-top: 12px;
+}
+.organization-details fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.organization-details textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+.organization-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.create-organization-dialog fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.create-organization-dialog textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+.create-organization-dialog .organization-form-actions {
+  justify-content: flex-end;
+}
+.dialog-cancel {
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--green);
 }
 .feed-layout {
   display: grid;
@@ -838,6 +906,107 @@ input::placeholder {
 .dialog-note {
   color: var(--muted);
 }
+.opportunity-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.opportunity-section .opportunity-heading h2 {
+  margin-bottom: 0;
+}
+.opportunity-list {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  list-style: none;
+}
+.opportunity-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.opportunity-list li > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.opportunity-list img {
+  width: 120px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.opportunity-section nav {
+  align-items: center;
+  margin-top: 16px;
+}
+.publish-opportunity-dialog {
+  max-width: 560px;
+}
+.publish-opportunity-dialog h2 {
+  margin-bottom: 16px;
+}
+.publish-opportunity-dialog fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.publish-opportunity-dialog textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+.publish-opportunity-dialog .organization-form-actions {
+  justify-content: flex-end;
+}
+.opportunity-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+.opportunity-dates label {
+  margin-bottom: 0;
+}
+.opportunity-dates + .dialog-note {
+  margin: 8px 0 20px;
+  font-size: 13px;
+}
+.registration-switch {
+  margin: 6px 0 16px;
+}
+.registration-switch label {
+  flex: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  margin: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.registration-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.registration-switch label:has(input:checked) {
+  background: white;
+  color: var(--green);
+  box-shadow: 0 1px 5px #183b2710;
+  font-weight: 600;
+}
+.registration-switch label:has(input:focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 @media (min-width: 701px) and (max-width: 1000px) {
   .hero-inner {
     padding: 48px 32px;
@@ -1005,7 +1174,8 @@ input::placeholder {
   .column-heading h2 {
     font-size: 17px;
   }
-  input {
+  input,
+  textarea {
     font-size: 16px;
   }
   .post-actions button {

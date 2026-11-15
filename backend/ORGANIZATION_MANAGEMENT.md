@@ -300,8 +300,11 @@ inferred, cleared, deleted, or partially committed. See the exact final SQL belo
 
 ## TypeScript integration
 
-The existing frontend Profile type/validator now includes the new field; signup/login contracts
-and UI remain unchanged. No organization-management UI was built.
+The frontend Profile type/validator includes organizationRole. The organization-creation,
+organization-profile and opportunity screens subsequently merged into main are preserved. Their
+creation adapter unwraps the ownership response, and their edit/publish controls allow the matching
+organization's OWNER or ADMIN regardless of global role. Unassociated registered accounts may
+create an organization. No new admin-team management UI is added by this merge.
 
 ```ts
 type OrganizationRole = 'OWNER' | 'ADMIN';
@@ -385,7 +388,7 @@ Older clients that ignore the additive field remain compatible with the new back
    Test INTERNAL and EXTERNAL/future-only/listing regressions. Health alone does not test RLS/grants.
 4. Resume management writes only after the new version is active and smoke checks succeed. Complete
    the notification/recovery operational requirement before enabling direct addition for users.
-5. No Vercel deployment is performed. If deploying the contract-only frontend change separately,
+5. No Vercel deployment is performed. If deploying the compatible frontend separately,
    deploy it after the backend. Do not roll back to the old global-role authorization version after
    new STANDARD OWNER/ADMIN accounts exist; forward-fix or use a separately reviewed compatibility
    rollback while keeping V004/data. Do not drop the new column/table or rewrite global roles.
@@ -543,6 +546,8 @@ COMMIT;
 
 ## Exact file inventory
 
+Compared with main after the November 15 compatibility merge: 52 files (36 modified, 16 added).
+
 ### Added
 
 - `backend/ORGANIZATION_MANAGEMENT.md`
@@ -576,6 +581,7 @@ COMMIT;
 - `backend/src/main/java/edu/gatech/sip6321/auth/ProfileResponse.java`
 - `backend/src/main/java/edu/gatech/sip6321/opportunity/OpportunityExceptionHandler.java`
 - `backend/src/main/java/edu/gatech/sip6321/opportunity/OpportunityService.java`
+- `backend/src/main/java/edu/gatech/sip6321/organization/OrganizationController.java`
 - `backend/src/main/java/edu/gatech/sip6321/organization/OrganizationExceptionHandler.java`
 - `backend/src/main/java/edu/gatech/sip6321/organization/OrganizationFailure.java`
 - `backend/src/main/java/edu/gatech/sip6321/organization/OrganizationService.java`
@@ -597,7 +603,8 @@ COMMIT;
 - `frontend/src/App.test.tsx`
 - `frontend/src/api/auth.test.ts`
 - `frontend/src/api/auth.ts`
-
+- `frontend/src/api/organizations.ts`
+- `frontend/src/pages/ProfileOrganization.tsx`
 
 ## Final verification record — November 12, 2026
 
@@ -636,3 +643,38 @@ and readiness report remain unresolved; neither document's contents were invente
 production credentials/configuration changes, deployment, external notification, commit, push,
 merge, or PR mutation occurred. Work is uncommitted on `feature/organization-management`, created
 from the fetched main revision containing merged PRs #17 and #19.
+
+## Main compatibility merge — November 15, 2026
+
+Integrated main revision `938743d`, including PRs #20–#23 (organization creation API/UI,
+organization profile editing, and opportunity publishing/listing UI), without changing V001–V004.
+Resolved six textual conflicts plus semantic overlaps. There is one POST /api/organizations route,
+served by OrganizationManagementController with the approved transactional OWNER/audit behavior.
+The older global-role-mutating creation path is superseded. Main's verified-identity extraction
+and account-lock helpers remain available. Incoming creation/authentication/rollback/concurrency
+regressions were retained and updated for OWNER assignment with an unchanged global role.
+
+Main's existing screens are preserved. The creation adapter validates and unwraps the ownership
+response; the existing edit/publish controls accept the matching organization's OWNER or ADMIN;
+unassociated registered users can create regardless of global role. Frontend regressions exercise
+both roles through profile editing and opportunity publishing, creation/profile refresh, safe
+conflict recovery, and read-only unrelated organizations. No new ADMIN-team UI was introduced.
+
+| Command | Ordinary backend tests | PostgreSQL tests | Result |
+| --- | --- | --- | --- |
+| Affected organization/profile tests | 101 passed | Not requested | BUILD SUCCESS |
+| `./mvnw verify` | 448 passed | Not requested | BUILD SUCCESS |
+| `./mvnw -Ppostgres-it verify` | 448 passed | 50 passed | BUILD SUCCESS |
+
+All final backend runs had zero failures, errors, or skips and passed formatting/packaging.
+The first PostgreSQL attempt failed at container initialization because Docker Desktop was stopped;
+no database test methods ran. After Docker Desktop was started, the full final command above passed.
+All containers were disposable; no live Supabase database or credentials were used.
+
+Frontend `npm ci`, typecheck, lint, format:check, all 58 tests, and production build passed.
+The original feature changed 49 files (33 modified, 16 added). Relative to current main, compatibility
+updates to the incoming controller, frontend organizations API, and profile-creation screen bring
+the feature diff to 52 files (36 modified, 16 added); this excludes teammate-only UI additions.
+The inventory above reflects that current diff. New local documentation links, credential-pattern
+review, whitespace checks and embedded SQL comparisons passed. The historical missing decision
+register/readiness-report links remain unchanged. No deployment or production SQL occurred.

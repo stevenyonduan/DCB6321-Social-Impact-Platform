@@ -13,6 +13,9 @@ them. Review the read-only preflight and additive V004, reconcile legacy roles e
 V004 manually before deploying the new backend. No live SQL or deployment is performed here.
 [Opportunity contracts](backend/OPPORTUNITIES.md) retain INTERNAL/EXTERNAL registration configuration,
 future-only publication, upcoming-only paginated lists, and existing validation.
+The organization-creation, organization-profile, and opportunity screens subsequently merged into
+main are preserved. Their API adapter and edit/publish controls now use the OWNER/ADMIN contract;
+new ADMIN-team management screens remain separate work.
 
 ## Approved stack and repository
 

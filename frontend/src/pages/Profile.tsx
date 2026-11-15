@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Profile } from '../api/auth';
+import { ProfileOrganization } from './ProfileOrganization';
 
 const memberSince = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -36,7 +37,19 @@ function ProfileAvatar({ src, initials }: { src?: string; initials: string }) {
   );
 }
 
-export function ProfilePage({ profile }: { profile: Profile }) {
+export function ProfilePage({
+  profile,
+  accessToken,
+  onUnauthorized,
+  onRefresh,
+  onOrganizationCreated,
+}: {
+  profile: Profile;
+  accessToken: string;
+  onUnauthorized: () => void;
+  onRefresh: () => void;
+  onOrganizationCreated: (id: string) => void;
+}) {
   const names = [profile.firstName.trim(), profile.lastName.trim()];
   const initials = names
     .map((name) => Array.from(name)[0])
@@ -72,6 +85,14 @@ export function ProfilePage({ profile }: { profile: Profile }) {
                 {memberSince.format(new Date(profile.createdAt))}
               </time>
             </dd>
+            <ProfileOrganization
+              key={profile.organizationId}
+              profile={profile}
+              accessToken={accessToken}
+              onUnauthorized={onUnauthorized}
+              onRefresh={onRefresh}
+              onCreated={onOrganizationCreated}
+            />
           </dl>
         </section>
       </div>

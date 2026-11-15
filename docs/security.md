@@ -46,10 +46,11 @@ React obtains a Supabase session; Spring verifies bearer access-token signatures
 
 The subsequently approved [organization profile API](../backend/ORGANIZATIONS.md) resolves a
 bounded portion of D02: authenticated application accounts may read the six organization profile
-fields; only persisted ORGANIZATION accounts whose users.organization_id matches the target may
-edit name/description/website. ADMIN has no edit override. Unknown/protected patch fields are
-rejected. V002 enables organizations RLS and revokes PUBLIC/anon/authenticated privileges without
-adding browser policies. Following/membership, verification and broader ADMIN policy remain open.
+fields. Authenticated creation grants OWNER to a registered account with null organization
+association/role and preserves its global role. Conditional claims, organization insertion and audit
+commit in one transaction. Clients cannot supply identity, role, association or verification.
+Only organization OWNER/ADMIN with a matching persisted association can edit or publish;
+global ADMIN grants no override. V002/V004 preserve backend-only application-table access.
 
 The design requires login for platform access, distinct STANDARD/ADMIN/ORGANIZATION permissions, private saved posts, moderation of posts/comments and authorized organization management/verification. Exact matrix is **PROPOSED**, pending D02:
 
@@ -62,9 +63,9 @@ The design requires login for platform access, distinct STANDARD/ADMIN/ORGANIZAT
 Resource ownership must be checked after identity validation. Derive author/sender/volunteer/reviewer IDs from identity. Verify each event and hour record belongs to the organization the reviewer can manage. Do not let a user promote themselves or set `is_verified`. **PROPOSED:** forbid self-verification and only transition PENDING submissions once; clarify review reversals (D10). Authorize organization-linked posts separately from ordinary posts.
 
 The subsequently approved [opportunity API](../backend/OPPORTUNITIES.md) extends the bounded D02
-policy: only a persisted ORGANIZATION account with an existing associated organization may
+policy: only a persisted organization OWNER or ADMIN with an existing associated organization may
 publish. Both organization and creator IDs derive from the verified account; protected fields
-are rejected. ADMIN has no override, and is_verified is not a publication prerequisite. Any
+are rejected. Global ADMIN alone has no override, and is_verified is not a publication prerequisite. Any
 authenticated application account may list an organization’s events. V003 enables events RLS,
 revokes browser-role privileges and adds no browser policies. Registration type does not change any permission. The approved
 PR #19 extension validates future starts against an injected server clock, rejects client time,

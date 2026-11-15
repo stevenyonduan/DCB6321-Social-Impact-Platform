@@ -6,15 +6,21 @@ import { isAccountPage } from '../navigation';
 
 export function Header({
   page,
+  signedIn,
   onLogout,
 }: {
   page: Page;
+  signedIn: boolean;
   onLogout: () => void;
 }) {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <PageLink page="landing" className="brand" aria-label="SOW home">
+        <PageLink
+          page={signedIn ? 'home' : 'landing'}
+          className="brand"
+          aria-label={signedIn ? 'SOW feed' : 'SOW home'}
+        >
           <img src={logo} alt="SOW" width="64" height="64" />
           <span>
             Making Service

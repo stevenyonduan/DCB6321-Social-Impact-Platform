@@ -5,6 +5,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Internal service. Callers must supply a trusted Auth identity, never unverified request data. */
@@ -48,6 +49,12 @@ public class UserService {
     public User getById(UUID id) {
         requireId(id);
         return users.findById(id).orElseThrow(AccountNotFoundException::new);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public User lockById(UUID id) {
+        requireId(id);
+        return users.findUserById(id).orElseThrow(AccountNotFoundException::new);
     }
 
     public User getByEmail(String email) {

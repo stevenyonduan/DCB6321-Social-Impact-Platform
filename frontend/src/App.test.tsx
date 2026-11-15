@@ -40,6 +40,18 @@ vi.mock('./auth/client', () => ({
 }));
 
 const id = 'b6034174-d377-4ad4-b96a-6777660143e6';
+const organizationId = 'a975e6c1-38b9-438a-a798-12741f117870';
+const organizationPath = `/organizations/${organizationId}`;
+const opportunityPath = `/api${organizationPath}/opportunities?page=0&size=20`;
+const emptyOpportunities = { items: [], page: 0, size: 20, hasNext: false };
+const organization = {
+  id: organizationId,
+  name: 'Atlanta Community Gardens',
+  description: 'Neighbors growing food together.',
+  website: 'https://example.org/',
+  isVerified: true,
+  createdAt: '2026-11-01T18:00:00Z',
+};
 const profile = {
   id,
   email: 'sam@example.com',
@@ -80,6 +92,383 @@ function emit(event: string, value: unknown) {
 function restore() {
   localStorage.setItem('sow-auth-session', JSON.stringify(session()));
 }
+
+describe('organization profile', () => {
+  it.each(['/profile', organizationPath])(
+    'opens the feed when a signed-in user clicks the logo from %s',
+    async (path) => {
+      restore();
+      window.history.replaceState(null, '', path);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(json(organization));
+      render(<App />);
+      await userEvent.click(
+        await screen.findByRole('link', { name: 'SOW feed' }),
+      );
+      expect(window.location.pathname).toBe('/home');
+      expect(screen.getByRole('heading', { name: /Hi, Sam/ })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    [404, 'ORGANIZATION_NOT_FOUND', 'Organization not found.'],
+    [401, 'UNAUTHORIZED', 'Your session has expired. Please log in again.'],
+  ])(
+    'handles organization read errors with status %s',
+    async (status, code, message) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(json({ code }, status));
+      render(<App />);
+      await screen.findByText(message);
+      expect(window.location.pathname).toBe(
+        status === 401 ? '/login' : organizationPath,
+      );
+      expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    },
+  );
+
+  it.each(['STANDARD', 'ADMIN', 'ORGANIZATION'])(
+    'shows the direct-link profile read-only for %s without ownership',
+    async (role) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          json({
+            ...profile,
+            role,
+            organizationId: role === 'ADMIN' ? null : id,
+            organizationRole: role === 'ADMIN' ? null : 'ADMIN',
+          }),
+        )
+        .mockResolvedValueOnce(json(organization));
+      render(<App />);
+      await screen.findByRole('heading', { name: organization.name });
+      expect(screen.getByText('Verified')).toBeTruthy();
+      expect(
+        screen.getByRole('link', { name: 'example.org' }).getAttribute('href'),
+      ).toBe(organization.website);
+      expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    },
+  );
+
+  it.each(['OWNER', 'ADMIN'])(
+    'opens My organization and saves only changed fields as %s with the current token',
+    async (organizationRole) => {
+      restore();
+      window.history.replaceState(null, '', '/profile');
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          json({ ...profile, organizationId, organizationRole }),
+        )
+        .mockResolvedValueOnce(json(organization))
+        .mockResolvedValueOnce(json(organization))
+        .mockResolvedValueOnce(json(emptyOpportunities))
+        .mockResolvedValueOnce(json({ ...organization, website: null }));
+      render(<App />);
+      await userEvent.click(
+        await screen.findByRole('link', { name: organization.name }),
+      );
+      expect(window.location.pathname).toBe(organizationPath);
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Edit profile' }),
+      );
+      await userEvent.clear(screen.getByLabelText('Website'));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+      expect(
+        await screen.findByText('Organization profile updated.'),
+      ).toBeTruthy();
+      expect(screen.getByText('No website listed.')).toBeTruthy();
+      expect(fetch).toHaveBeenLastCalledWith(
+        `/api${organizationPath}`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ website: null }),
+          headers: expect.objectContaining({
+            Authorization: 'Bearer access-token',
+          }),
+        }),
+      );
+    },
+  );
+
+  it('creates an organization from Account details and opens it with owner controls', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({ organization, ownerId: id, organizationRole: 'OWNER' }, 201),
+      )
+      .mockResolvedValueOnce(
+        json({ ...profile, organizationId, organizationRole: 'OWNER' }),
+      )
+      .mockResolvedValueOnce(json(organization));
+    render(<App />);
+    const details = await screen.findByRole('region', {
+      name: 'Account details',
+    });
+    expect(within(details).getByText('My organization')).toBeTruthy();
+    await userEvent.click(
+      within(details).getByRole('button', { name: 'Create organization' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Create organization' }),
+    );
+    await userEvent.type(
+      dialog.getByLabelText(/Organization name/),
+      organization.name,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Create organization' }),
+    );
+    await screen.findByRole('button', { name: 'Edit profile' });
+    expect(window.location.pathname).toBe(organizationPath);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/organizations',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: organization.name,
+          description: null,
+          website: null,
+        }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/users/me',
+      expect.anything(),
+    );
+  });
+
+  it('refreshes the linked organization after a creation conflict without posting twice', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json({ code: 'MEMBERSHIP_CONFLICT' }, 409))
+      .mockResolvedValueOnce(
+        json({ ...profile, organizationId, organizationRole: 'OWNER' }),
+      )
+      .mockResolvedValueOnce(json(organization));
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Create organization' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Create organization' }),
+    );
+    await userEvent.type(
+      dialog.getByLabelText(/Organization name/),
+      organization.name,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Create organization' }),
+    );
+    expect((await dialog.findByRole('alert')).textContent).toContain(
+      'already linked',
+    );
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Refresh profile' }),
+    );
+    await screen.findByRole('link', { name: organization.name });
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([, options]) => options?.method === 'POST'),
+    ).toHaveLength(1);
+  });
+
+  it('keeps the draft after a failed save and hides editing when permission is denied', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        json({ ...profile, organizationId, organizationRole: 'OWNER' }),
+      )
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json(emptyOpportunities))
+      .mockResolvedValueOnce(json({ code: 'ORGANIZATION_UNAVAILABLE' }, 503))
+      .mockResolvedValueOnce(json({ code: 'FORBIDDEN' }, 403));
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    const name = screen.getByLabelText<HTMLInputElement>('Organization name');
+    await userEvent.clear(name);
+    await userEvent.type(name, 'New name');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(/save could not be confirmed/);
+    expect(name.value).toBe('New name');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(/do not have permission/);
+    expect(screen.queryByRole('button', { name: 'Edit profile' })).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: organization.name }),
+    ).toBeTruthy();
+  });
+
+  it('preserves an organization deep link through sign-in', async () => {
+    window.history.replaceState(null, '', organizationPath);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Welcome back.' });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(result()))
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization));
+    const user = await fill();
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await screen.findByRole('heading', { name: organization.name });
+    expect(window.location.pathname).toBe(organizationPath);
+  });
+});
+
+describe('organization opportunities', () => {
+  const start = '2099-01-15T10:00';
+  const end = '2099-01-15T12:00';
+  const opportunity = {
+    id: '3a5b0fd2-7d4a-4bd9-8d71-dca84dd08792',
+    organizationId,
+    creatorId: id,
+    createdAt: organization.createdAt,
+    title: 'Garden workday',
+    description: 'Help prepare garden beds.',
+    location: 'Atlanta, GA',
+    eventStart: new Date(start).toISOString(),
+    eventEnd: new Date(end).toISOString(),
+    imageUrl: null,
+    registrationType: 'EXTERNAL',
+    registrationUrl: 'https://example.org/register',
+  };
+
+  it.each(['OWNER', 'ADMIN'])(
+    'publishes as %s and loads the saved opportunity again after reload',
+    async (organizationRole) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      let published = false;
+      vi.mocked(fetch).mockImplementation(async (url, options) => {
+        if (url === '/api/users/me') {
+          return json({ ...profile, organizationId, organizationRole });
+        }
+        if (url === opportunityPath) {
+          return json({
+            ...emptyOpportunities,
+            items: published ? [opportunity] : [],
+          });
+        }
+        if (options?.method === 'POST') {
+          published = true;
+          return json(opportunity, 201);
+        }
+        return json(organization);
+      });
+      const view = render(<App />);
+      await screen.findByText('No upcoming opportunities yet.');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Publish opportunity' }),
+      );
+      const dialog = within(
+        screen.getByRole('dialog', { name: 'Publish opportunity' }),
+      );
+      expect(
+        dialog.getByRole<HTMLInputElement>('radio', { name: 'Internal' })
+          .checked,
+      ).toBe(true);
+      expect(dialog.queryByLabelText('Registration URL')).toBeNull();
+      await userEvent.click(dialog.getByRole('radio', { name: 'External' }));
+      await userEvent.type(
+        dialog.getByLabelText('Registration URL'),
+        opportunity.registrationUrl,
+      );
+      await userEvent.type(dialog.getByLabelText('Title'), opportunity.title);
+      await userEvent.type(
+        dialog.getByLabelText('Description'),
+        opportunity.description,
+      );
+      await userEvent.type(
+        dialog.getByLabelText('Location'),
+        opportunity.location,
+      );
+      fireEvent.change(dialog.getByLabelText('Start date and time'), {
+        target: { value: start },
+      });
+      fireEvent.change(dialog.getByLabelText('End date and time'), {
+        target: { value: end },
+      });
+      await userEvent.click(
+        dialog.getByRole('button', { name: 'Publish opportunity' }),
+      );
+      await screen.findByText('Opportunity published.');
+      expect(
+        (
+          await screen.findByRole('link', { name: 'Register on example.org' })
+        ).getAttribute('href'),
+      ).toBe(opportunity.registrationUrl);
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/organizations/me/opportunities',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer access-token',
+          }),
+          body: JSON.stringify({
+            title: opportunity.title,
+            description: opportunity.description,
+            location: opportunity.location,
+            eventStart: opportunity.eventStart,
+            eventEnd: opportunity.eventEnd,
+            imageUrl: null,
+            registrationType: 'EXTERNAL',
+            registrationUrl: opportunity.registrationUrl,
+          }),
+        }),
+      );
+      view.unmount();
+      render(<App />);
+      await screen.findByRole('heading', { name: opportunity.title });
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([url]) => url === opportunityPath),
+      ).toHaveLength(3);
+    },
+  );
+
+  it('shows a read-only list to a regular user and loads the next page', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(
+        json({ ...emptyOpportunities, items: [opportunity], hasNext: true }),
+      )
+      .mockResolvedValueOnce(json({ ...emptyOpportunities, page: 1 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: opportunity.title });
+    expect(
+      screen.queryByRole('button', { name: 'Publish opportunity' }),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Page 2');
+    expect(fetch).toHaveBeenLastCalledWith(
+      opportunityPath.replace('page=0', 'page=1'),
+      expect.anything(),
+    );
+  });
+});
+
 async function fill(mode: 'signup' | 'login' = 'login') {
   const user = userEvent.setup();
   if (mode === 'signup') {
