@@ -35,6 +35,11 @@ public final class ProfileFailure extends RuntimeException {
                 503, "ACCOUNT_UNAVAILABLE", "Account access is temporarily unavailable.");
     }
 
+    public static ProfileFailure invalid() {
+        return new ProfileFailure(
+                400, "INVALID_REQUEST", "Supply only valid firstName, lastName or bio updates.");
+    }
+
     static ProfileFailure fromAuth(SignupFailure failure) {
         return switch (failure.code()) {
             case "AUTH_UNAVAILABLE" ->

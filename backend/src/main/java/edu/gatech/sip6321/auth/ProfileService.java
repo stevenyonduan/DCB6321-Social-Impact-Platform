@@ -1,6 +1,7 @@
 package edu.gatech.sip6321.auth;
 
 import edu.gatech.sip6321.account.AccountNotFoundException;
+import edu.gatech.sip6321.account.ProfilePatch;
 import edu.gatech.sip6321.account.UserService;
 import java.util.List;
 import java.util.UUID;
@@ -43,5 +44,19 @@ public class ProfileService {
         }
         String token = header.substring(header.indexOf(' ') + 1).stripLeading();
         return auth.verifyAccessToken(token);
+    }
+
+    public ProfileResponse patch(List<String> authorization, ProfilePatch patch) {
+        var id = verifiedUserId(authorization);
+        if (patch == null) throw ProfileFailure.invalid();
+        try {
+            return ProfileResponse.of(users.updateProfile(id, patch));
+        } catch (AccountNotFoundException exception) {
+            throw ProfileFailure.provisioning();
+        } catch (DataAccessException
+                | CannotCreateTransactionException
+                | TransactionSystemException exception) {
+            throw ProfileFailure.database();
+        }
     }
 }

@@ -86,6 +86,84 @@ class UserPersistenceIT {
     }
 
     @Test
+    void profileUpdatesCommitOnlySuppliedPersonalFieldsForVerifiedAccount() {
+        service.createStandardAccount(id, EMAIL, "First", "Last");
+        UUID other = UUID.randomUUID();
+        authIdentity(other);
+        service.createStandardAccount(other, "other@example.test", "Other", "User");
+        jdbc.update("INSERT INTO public.organizations(id,name) VALUES (?, 'Profile org')", other);
+        jdbc.update(
+                "UPDATE public.users SET bio='Original bio', avatar_url='https://example.test/avatar.png', organization_id=?, organization_role='ADMIN' WHERE id=?",
+                other,
+                id);
+        var before = jdbc.queryForMap("SELECT * FROM public.users WHERE id=?", id);
+        var otherBefore = jdbc.queryForMap("SELECT * FROM public.users WHERE id=?", other);
+        var auth = mock(SupabaseAuthClient.class);
+        when(auth.verifyAccessToken("isolated-access")).thenReturn(id);
+        var profiles = new edu.gatech.sip6321.auth.ProfileService(auth, service);
+        var json = new tools.jackson.databind.ObjectMapper();
+        var updated =
+                profiles.patch(
+                        List.of("Bearer isolated-access"),
+                        ProfilePatch.fromJson(json.readTree("{\"firstName\":\"🌱\"}")));
+        assertThat(updated.firstName()).isEqualTo("🌱");
+        var after = jdbc.queryForMap("SELECT * FROM public.users WHERE id=?", id);
+        before.put("first_name", "🌱");
+        assertThat(after).isEqualTo(before);
+        assertThat(jdbc.queryForMap("SELECT * FROM public.users WHERE id=?", other))
+                .isEqualTo(otherBefore);
+        assertThat(profiles.me(List.of("Bearer isolated-access")).firstName()).isEqualTo("🌱");
+
+        profiles.patch(
+                List.of("Bearer isolated-access"),
+                ProfilePatch.fromJson(
+                        json.readTree("{\"lastName\":\"Taylor\",\"bio\":\"Gardens\"}")));
+        assertThat(service.getById(id).getLastName()).isEqualTo("Taylor");
+        assertThat(service.getById(id).getBio()).isEqualTo("Gardens");
+        profiles.patch(
+                List.of("Bearer isolated-access"),
+                ProfilePatch.fromJson(json.readTree("{\"bio\":null}")));
+        assertThat(service.getById(id).getBio()).isNull();
+        assertThat(service.getById(id).getOrganizationId()).isEqualTo(other);
+        assertThat(service.getById(id).getOrganizationRole()).isEqualTo(OrganizationRole.ADMIN);
+    }
+
+    @Test
+    void invalidProfilePatchAndFailedTransactionLeaveAllColumnsUnchanged() {
+        service.createStandardAccount(id, EMAIL, "First", "Last");
+        var before = jdbc.queryForList("SELECT * FROM public.users");
+        var json = new tools.jackson.databind.ObjectMapper();
+        assertThatThrownBy(
+                        () ->
+                                service.updateProfile(
+                                        id,
+                                        ProfilePatch.fromJson(
+                                                json.readTree(
+                                                        "{\"firstName\":\"Changed\",\"lastName\":null}"))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(before);
+        // Force an isolated database write failure without changing application schema/migrations.
+        jdbc.execute(
+                "CREATE FUNCTION public.reject_profile_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated write failure'; END $$");
+        jdbc.execute(
+                "CREATE TRIGGER reject_profile_test BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.reject_profile_test()");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    service.updateProfile(
+                                            id,
+                                            ProfilePatch.fromJson(
+                                                    json.readTree(
+                                                            "{\"firstName\":\"Changed\",\"bio\":\"Changed\"}"))))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(jdbc.queryForList("SELECT * FROM public.users")).isEqualTo(before);
+        } finally {
+            jdbc.execute("DROP TRIGGER reject_profile_test ON public.users");
+            jdbc.execute("DROP FUNCTION public.reject_profile_test()");
+        }
+    }
+
+    @Test
     void profileReadsOnlyVerifiedAccountAndDoesNotChangeOrProvisionRows() {
         service.createStandardAccount(id, EMAIL, "First", "Last");
         UUID other = UUID.randomUUID();

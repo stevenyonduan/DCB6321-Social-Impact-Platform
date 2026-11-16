@@ -3,7 +3,8 @@
 `GET /api/users/me` accepts `Authorization: Bearer <supabase_access_token>` and no body.
 It is enabled by the existing `SIP_AUTH_ENABLED=true` setting and database-capable profile,
 alongside signup/login. The current organization-role contract requires reviewed V004 first;
-no new Render variable, dependency, or CORS change is required. Profile editing and frontend integration are outside this ticket.
+no new Render variable, dependency, or CORS change is required. SCRUM-45 adds the backend
+profile update contract below; the frontend editor remains separate work (SCRUM-44).
 
 HTTP 200 returns a plain application profile object with `Cache-Control: no-store`:
 
@@ -43,7 +44,85 @@ There is no existing authentication filter; this endpoint makes exactly one veri
 Supabase checks validity/expiry; the application never authorizes decoded JWT claims. The verified
 UUID alone selects `UserService.getById` in its existing read-only transaction. Request IDs,
 emails, roles, query parameters, or bodies cannot select another account. Application email drift
-does not change the UUID lookup. The endpoint never provisions, reconciles, edits, or deletes rows.
+does not change the UUID lookup. GET never provisions, reconciles, edits, or deletes rows.
+
+## Personal profile updates (SCRUM-45)
+
+`PATCH /api/users/me` requires the same Bearer authentication and `Content-Type: application/json`.
+All existing account types, including organization OWNER/ADMIN accounts, can update their own
+personal profile. Supabase verifies the token once; only its verified UUID selects the account.
+Client query parameters cannot select another account or grant permissions.
+
+| Property | Accepted value | Omission |
+| --- | --- | --- |
+| `firstName` | Nonblank string, at most 100 Unicode code points | Preserve current first name |
+| `lastName` | Nonblank string, at most 100 Unicode code points | Preserve current last name |
+| `bio` | String or null; null clears the bio | Preserve current bio |
+
+Names are not trimmed or truncated. Empty and whitespace-only names (including Unicode space
+characters) and null names are invalid. Strings must be valid Unicode without NUL, consistent
+with PostgreSQL text storage. Bio has no new database or per-field length constraint. The entire
+JSON request is limited to **16,384 bytes**, including JSON syntax, UTF-8 bytes and escapes, matching
+the signup/login request bound. Oversized bodies, including bodies without Content-Length,
+receive HTTP 413 `REQUEST_TOO_LARGE`; non-JSON media types receive 415 `UNSUPPORTED_MEDIA_TYPE`.
+
+Example request (omit unchanged properties):
+
+```http
+PATCH /api/users/me
+Authorization: Bearer <development-access-token>
+Content-Type: application/json
+
+{"firstName":"Jordan","lastName":"Taylor","bio":"I enjoy volunteering at community gardens."}
+```
+
+HTTP 200 returns the same complete ten-field representation as GET, including null optional fields:
+
+```json
+{
+  "id": "b6034174-d377-4ad4-b96a-6777660143e6",
+  "email": "student@example.com",
+  "role": "STANDARD",
+  "firstName": "Jordan",
+  "lastName": "Taylor",
+  "bio": "I enjoy volunteering at community gardens.",
+  "avatarUrl": null,
+  "organizationId": null,
+  "organizationRole": null,
+  "createdAt": "2026-11-01T18:00:00Z"
+}
+```
+
+`{"bio":null}` clears the bio; `{"firstName":"Jordan"}` leaves bio and last name unchanged.
+`{}`, missing/null/non-object bodies, malformed JSON, wrong value types, invalid names and any
+unknown property receive HTTP 400 `INVALID_REQUEST` with a fixed safe message.
+Identity and permission properties are prohibited: `id`, `email`, `role`, `organizationId`,
+`organizationRole`, `createdAt`, `avatarUrl`, passwords and other Auth/session fields.
+For example, `{"firstName":"Jordan","role":"ADMIN","organizationId":"another-organization"}`
+is rejected in full with HTTP 400; even the first name is not changed.
+
+Updates use a Spring-managed write transaction and the existing pessimistic account-row lock.
+Only supplied personal columns are dirtied, flushed and committed before success is returned.
+Failures roll back the whole update. Identity, global/organization roles, association, avatar,
+email and creation timestamp remain unchanged; no migrations or new permissions are required.
+Missing accounts and Auth/database failures retain the error mappings below, including commit
+failures. PATCH successes and errors have `Cache-Control: no-store`; 401 includes
+`WWW-Authenticate: Bearer`. No tokens, SQL errors or raw exception messages are returned.
+
+For SCRUM-44, send only changed approved fields using the current Supabase access token. Replace
+the cached profile with the successful full response. Render names/bio as escaped text, never
+trusted HTML. On a failure, retain the prior profile and handle the stable error code; refresh
+expired sessions through the existing browser Auth lifecycle.
+
+### Manual development test
+
+Use the authorized development configuration described below with an existing test account.
+In a private API client, obtain its token through the existing login flow and set the Bearer
+header without logging or saving the credential. Read GET first, PATCH one name or bio, then GET
+again to confirm persistence and unchanged protected fields. Test `{"bio":null}` and a partial
+name update. Try `{}`, `{"firstName":null}` and `{"role":"ADMIN"}`: expect 400 and no changes.
+Try a valid PATCH without a token: expect 401. Use only a development account you are authorized
+to modify; these operations change that account. Restore its original personal values afterward.
 
 ## Errors
 
@@ -52,6 +131,9 @@ Authentication failures also include `WWW-Authenticate: Bearer`.
 
 | HTTP | Code | Meaning |
 | --- | --- | --- |
+| 400 | INVALID_REQUEST | PATCH body is empty, malformed, contains invalid values or prohibited/unknown properties |
+| 413 | REQUEST_TOO_LARGE | PATCH JSON body exceeds 16,384 bytes |
+| 415 | UNSUPPORTED_MEDIA_TYPE | PATCH requires application/json |
 | 401 | UNAUTHORIZED | Missing/malformed Bearer header, rejected/expired token, or anonymous identity |
 | 429 | AUTH_RATE_LIMITED | Existing provider rate-limit convention |
 | 502 | AUTH_RESPONSE_INVALID | Malformed upstream identity/response or unexpected provider/configuration rejection |
@@ -62,8 +144,8 @@ Authentication failures also include `WWW-Authenticate: Bearer`.
 
 No upstream body, SQL, credentials, token, or exception message is included. Missing accounts use
 login's existing provisioning convention rather than 404; follow the authorized recovery process
-in [SIGNUP.md](SIGNUP.md#operator-assisted-reconciliation-runbook), outside this read-only endpoint.
-Verification depends on Supabase availability and makes a network request on each profile read.
+in [SIGNUP.md](SIGNUP.md#operator-assisted-reconciliation-runbook), outside these profile endpoints.
+Verification depends on Supabase availability and makes a network request on each profile read/update.
 
 ## Local verification and manual test
 

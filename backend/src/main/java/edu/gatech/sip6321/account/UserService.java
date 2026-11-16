@@ -51,6 +51,17 @@ public class UserService {
         return users.findById(id).orElseThrow(AccountNotFoundException::new);
     }
 
+    @Transactional
+    public User updateProfile(UUID verifiedAuthUserId, ProfilePatch patch) {
+        requireId(verifiedAuthUserId);
+        if (patch == null) throw new IllegalArgumentException("Profile update is required");
+        var user =
+                users.findUserById(verifiedAuthUserId).orElseThrow(AccountNotFoundException::new);
+        user.apply(patch);
+        users.flush();
+        return user;
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public User lockById(UUID id) {
         requireId(id);

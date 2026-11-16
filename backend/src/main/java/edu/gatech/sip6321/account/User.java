@@ -11,12 +11,14 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 import org.springframework.data.domain.Persistable;
 
 /** Application profile only; authentication and passwords belong to Supabase Auth. */
 @Entity
+@DynamicUpdate
 @Table(name = "users", schema = "public")
 public class User implements Persistable<UUID> {
     @Id
@@ -62,6 +64,12 @@ public class User implements Persistable<UUID> {
     @Transient private boolean newRecord = true;
 
     protected User() {}
+
+    void apply(ProfilePatch patch) {
+        if (patch.contains("firstName")) firstName = patch.value("firstName");
+        if (patch.contains("lastName")) lastName = patch.value("lastName");
+        if (patch.contains("bio")) bio = patch.value("bio");
+    }
 
     static User standardAccount(UUID authUserId, String email, String firstName, String lastName) {
         var user = new User();

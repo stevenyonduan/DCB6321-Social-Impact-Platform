@@ -8,6 +8,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = ProfileController.class)
 public class ProfileExceptionHandler {
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    ResponseEntity<SignupExceptionHandler.Error> invalid(Exception ignored) {
+        return failure(ProfileFailure.invalid());
+    }
+
     @ExceptionHandler(ProfileFailure.class)
     ResponseEntity<SignupExceptionHandler.Error> failure(ProfileFailure failure) {
         var response = ResponseEntity.status(failure.status()).cacheControl(CacheControl.noStore());
