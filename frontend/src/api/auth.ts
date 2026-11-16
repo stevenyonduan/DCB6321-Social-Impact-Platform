@@ -14,6 +14,10 @@ export type Profile = AccountUser & {
   createdAt: string;
 };
 
+export type ProfileUpdate = Partial<
+  Pick<Profile, 'firstName' | 'lastName' | 'bio'>
+>;
+
 export type AuthResult = {
   user: AccountUser;
   session: {
@@ -190,6 +194,31 @@ export function getProfile(accessToken: string, signal?: AbortSignal) {
         Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json',
       },
+    },
+    profile,
+    signal,
+  );
+}
+
+export async function updateProfile(
+  { firstName, lastName, bio }: ProfileUpdate,
+  accessToken: string,
+  signal: AbortSignal,
+) {
+  const body = JSON.stringify({ firstName, lastName, bio });
+  if (new TextEncoder().encode(body).length > 16_384)
+    throw new ApiError(413, 'REQUEST_TOO_LARGE');
+
+  return request(
+    '/users/me',
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body,
     },
     profile,
     signal,

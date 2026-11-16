@@ -13,16 +13,22 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ServletRequestPathUtils;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 /** Bound PATCH buffering, including bodies without Content-Length, before MVC parses JSON. */
 @Component
 @ConditionalOnProperty(name = "SIP_AUTH_ENABLED", havingValue = "true")
 public class ProfileRequestFilter extends OncePerRequestFilter {
     private static final int LIMIT = 16384;
+    private static final PathPattern PROFILE_PATH =
+            PathPatternParser.defaultInstance.parse("/api/users/me");
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().equals(request.getContextPath() + "/api/users/me");
+        var path = ServletRequestPathUtils.parseAndCache(request).pathWithinApplication();
+        return !PROFILE_PATH.matches(path);
     }
 
     @Override

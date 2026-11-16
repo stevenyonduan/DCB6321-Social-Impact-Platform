@@ -24,7 +24,8 @@ const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
 
 export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
-  const { state, signIn, logout, expireSession, retry } = useAccount();
+  const { state, signIn, logout, expireSession, retry, replaceProfile } =
+    useAccount();
   const main = useRef<HTMLElement>(null);
   const accountPage = isAccountPage(page);
   const redirectToLogin = accountPage && state.status === 'anonymous';
@@ -109,6 +110,9 @@ export default function App() {
             accessToken={state.accessToken}
             onUnauthorized={expireSession}
             onRefresh={retry}
+            onProfileUpdated={(profile) =>
+              replaceProfile(profile, state.accessToken)
+            }
             onOrganizationCreated={(id) => {
               retry();
               navigate(`organizations/${id}`);

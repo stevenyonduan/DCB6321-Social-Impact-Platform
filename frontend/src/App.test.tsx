@@ -811,6 +811,111 @@ describe('backend account integration', () => {
 });
 
 describe('profile page', () => {
+  it('prefills the editor and cancels without saving the draft', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch).mockResolvedValue(json({ ...profile, bio: 'Gardens' }));
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    const firstName = screen.getByRole<HTMLInputElement>('textbox', {
+      name: 'First name',
+    });
+    expect(firstName.value).toBe('Sam');
+    expect(firstName).toBe(document.activeElement);
+    expect(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'Last name' })
+        .value,
+    ).toBe('Example');
+    expect(
+      screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Bio' }).value,
+    ).toBe('Gardens');
+    await userEvent.type(firstName, 'uel');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      screen.queryByRole('form', { name: 'Edit your profile' }),
+    ).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Sam Example' })).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the changed fields and uses the returned profile across pages', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json({ ...profile, bio: 'Gardens' }))
+      .mockResolvedValueOnce(json({ ...profile, firstName: 'Jordan' }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    const firstName = screen.getByRole('textbox', { name: 'First name' });
+    await user.clear(firstName);
+    await user.type(firstName, 'Jordan');
+    await user.clear(screen.getByRole('textbox', { name: 'Bio' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await screen.findByText('Profile updated.');
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/users/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ firstName: 'Jordan', bio: null }),
+      }),
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Jordan Example' }),
+    ).toBeTruthy();
+    expect(screen.getByText('No bio yet.')).toBeTruthy();
+    await user.click(screen.getByRole('link', { name: 'Feed' }));
+    expect(screen.getByRole('heading', { name: /Hi, Jordan/ })).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the draft when a save fails and lets the user retry', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json({ code: 'REQUEST_TOO_LARGE' }, 413))
+      .mockResolvedValueOnce(json({ ...profile, bio: 'Gardens' }));
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Edit profile' }),
+    );
+    const bio = screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Bio',
+    });
+    fireEvent.change(bio, { target: { value: '🌱'.repeat(4096) } });
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Your profile update is too large. Try shortening your bio.',
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(bio, { target: { value: 'Gardens' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(bio.value).toBe('Gardens');
+    expect(screen.getByText('No bio yet.')).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('Profile updated.');
+    expect(screen.getByText('Gardens')).toBeTruthy();
+  });
+
   it('navigates between Feed and Profile with one authenticated profile request', async () => {
     restore();
     window.history.replaceState(null, '', '/home');

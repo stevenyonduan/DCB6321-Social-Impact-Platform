@@ -566,7 +566,14 @@ input::placeholder {
 .profile-empty {
   color: var(--muted);
 }
-.organization-intro {
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+}
+.organization-intro,
+.personal-profile-intro {
   justify-content: space-between;
   flex-wrap: wrap;
 }
@@ -590,7 +597,8 @@ input::placeholder {
 .create-organization-link:hover {
   text-decoration: none;
 }
-.organization-wide {
+.organization-wide,
+.profile-wide {
   grid-column: 1 / -1;
 }
 .organization-status {
@@ -599,17 +607,20 @@ input::placeholder {
 .organization-status > * + * {
   margin-top: 12px;
 }
-.organization-details fieldset {
+.organization-details fieldset,
+.profile-edit-form fieldset {
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
-.organization-details textarea {
+.organization-details textarea,
+.profile-edit-form textarea {
   font-family: inherit;
   resize: vertical;
 }
-.organization-form-actions {
+.organization-form-actions,
+.profile-form-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;

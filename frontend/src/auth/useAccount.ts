@@ -205,6 +205,15 @@ export function useAccount() {
     signIn,
     logout,
     expireSession,
+    replaceProfile: (profile: Profile, accessToken: string) => {
+      setState((current) =>
+        current.status === 'ready' &&
+        current.accessToken === accessToken &&
+        current.profile.id === profile.id
+          ? { ...current, profile }
+          : current,
+      );
+    },
     retry: () => {
       ++epoch.current;
       request.current?.abort();
