@@ -326,6 +326,35 @@ class ProfileUpdateControllerTest {
     }
 
     @Test
+    void boundsRequestsWithPathParameters() throws Exception {
+        mvc.perform(
+                        patch(PATH + ";x=1")
+                                .contentType("application/json")
+                                .content("{\"bio\":\"" + "x".repeat(16384) + "\"}"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("REQUEST_TOO_LARGE"));
+        verifyNoInteractions(auth, users);
+    }
+
+    @Test
+    void keepsCorsHeadersOnEarlyPatchErrors() throws Exception {
+        var origin = "https://frontend.example.test";
+        mvc.perform(
+                        patch(PATH)
+                                .header("Origin", origin)
+                                .contentType("application/json")
+                                .content("{\"bio\":\"" + "x".repeat(16384) + "\"}"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(header().string("Access-Control-Allow-Origin", origin))
+                .andExpect(jsonPath("$.code").value("REQUEST_TOO_LARGE"));
+        mvc.perform(patch(PATH).header("Origin", origin).contentType("text/plain").content("{}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(header().string("Access-Control-Allow-Origin", origin))
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+        verifyNoInteractions(auth, users);
+    }
+
+    @Test
     void allowsPatchCorsPreflight() throws Exception {
         mvc.perform(
                         options(PATH)
