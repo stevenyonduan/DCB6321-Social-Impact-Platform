@@ -189,19 +189,29 @@ Newly approved extensions to the DDD for PR #19 (not original Figure 14 fields):
 `events_registration_type_check` and `events_registration_url_check` enforce valid combinations;
 the API additionally validates external HTTP(S) URLs. The owner now confirms V001–V003 are applied;
 all three remain immutable. V004 changes organization authority only; event keys/FKs, RLS/browser revocations,
-and the organization/start/id index remain unchanged. No event registration rows are created.
+and the organization/start/id index remain unchanged. Opportunity publishing creates no registration
+rows; the V005 registration API below handles them.
 
 ## event_registrations
 
-Volunteer RSVPs. Source: DDD p. 17.
+The approved internal-registration task supersedes the DDD composite primary key for this table.
+[V005](../backend/db/migrations/V005__create_event_registrations.sql) adds a surrogate UUID ID while
+retaining unique event/user pairs. See [the complete registration contract and migration procedure](../backend/EVENT_REGISTRATIONS.md).
 
 | Column | PostgreSQL type | Nullable | Keys, defaults and constraints |
 | --- | --- | --- | --- |
-| user_id | UUID | No (PK) | PK part; FK users(id) |
-| event_id | UUID | No (PK) | PK part; FK events(id) |
-| registered_at | TIMESTAMPTZ | No | Default NOW() |
+| id | UUID | No | Primary key, default gen_random_uuid() |
+| event_id | UUID | No | FK events(id), ON UPDATE/DELETE NO ACTION |
+| user_id | UUID | No | FK users(id), ON UPDATE/DELETE NO ACTION |
+| registered_at | TIMESTAMPTZ | No | Default NOW(), PostgreSQL microsecond precision |
 
-Composite PK (user_id, event_id). No registration status or attendance field. Cancellation/past-event rules are D11.
+UNIQUE(event_id,user_id) prevents concurrent duplicates. Ordered indexes on
+(event_id,registered_at,id) and (user_id,registered_at,id) support stable attendee/personal pages.
+RLS enabled, no browser policies, all table access revoked from PUBLIC/anon/authenticated.
+Cancellation physically removes the caller's row before event start; re-registration is permitted.
+Past rows remain. The service permits INTERNAL events only, strictly future against server time;
+OWNER and ADMIN retain volunteer eligibility. This resolves D11 for this bounded feature; no
+capacity, waitlist, approval, attendance or hours columns. Already-applied V001–V004 remain unchanged.
 
 ## logged_hours
 

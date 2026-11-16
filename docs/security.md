@@ -1,5 +1,21 @@
 # Security and privacy
 
+## Approved internal registration authorization
+
+[Registration](../backend/EVENT_REGISTRATIONS.md) reuses ProfileService's Supabase token verification
+and persisted account lookup on every call. STANDARD, OWNER and ADMIN can register/cancel only as
+themselves; no supplied identity, organization or role authorizes a mutation. Nonempty mutation
+bodies are rejected. Attendees require OrganizationAuthorization.manager and an event whose
+organization matches the current persisted association; global roles grant no override. Responses
+omit emails and other private account fields, and all registration responses use no-store.
+INTERNAL-only/future-start checks run in the service against server Clock; cancellation is own-row
+only and forbidden at/after start. Status and personal lists preserve historical registrations.
+V005 uses unique event/user pairs for concurrency, NO ACTION FKs, RLS, no browser policies and
+revokes PUBLIC/anon/authenticated access. Atomic insert and user-scoped DELETE avoid duplicate or
+cross-user writes. Database/transaction errors use fixed sanitized messages, including commit
+failures. Existing SQL/bind/exception logging suppression remains. Effective JDBC grants and RLS
+must be reviewed before deployment; no production access or new secrets/configuration is added.
+
 ## Current organization-management authorization
 
 The newly approved [organization-management contract](../backend/ORGANIZATION_MANAGEMENT.md)
@@ -74,8 +90,9 @@ URLs are untrusted references: the API validates absolute HTTP(S), host, credent
 unsafe control/Unicode characters without fetching or granting volunteer-data access. HTTP is
 permitted; HTTPS is recommended. A future frontend must show the destination domain, use safe
 external links, avoid automatic redirects and transmitting tokens/sensitive data, and never count
-a link click as registration. INTERNAL is the omission default; no RSVP/registration records or
-provider integrations are implemented. Broader ADMIN/verification and D06 Storage policy remain open.
+a link click as registration. INTERNAL is the omission default; internal rows are now handled by
+the V005 registration API above. No external provider integration is implemented. Broader
+ADMIN/verification and D06 Storage policy remain open.
 
 ## Data privacy and moderation
 

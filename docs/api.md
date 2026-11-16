@@ -1,5 +1,31 @@
 # API and interfaces — Detailed Design Document requirements
 
+## Approved internal event registration contract
+
+The [complete registration contract](../backend/EVENT_REGISTRATIONS.md) defines authentication,
+request/success/error examples, curl commands, pagination and frontend integration for all five routes:
+
+| Method | URL | Success |
+| --- | --- | --- |
+| POST | `/api/opportunities/{eventId}/registrations/me` | 201 registration |
+| GET | `/api/opportunities/{eventId}/registrations/me` | 200 own status (registration or null) |
+| DELETE | `/api/opportunities/{eventId}/registrations/me` | 204 empty |
+| GET | `/api/users/me/registrations` | 200 own registration/event page |
+| GET | `/api/organizations/me/opportunities/{eventId}/registrations` | 200 attendee page |
+
+All require a verified Bearer token and persisted application account; no request body. Every
+registered account volunteers, including OWNER/ADMIN. POST requires INTERNAL and strictly future
+start against server time; DELETE removes only the caller's row before start. Status/personal lists
+retain history. Missing event: 404 EVENT_NOT_FOUND. Missing cancellation row: 404
+REGISTRATION_NOT_FOUND. Duplicate POST: 409 ALREADY_REGISTERED. Started mutation: 400
+EVENT_ALREADY_STARTED. EXTERNAL POST: 400 INTERNAL_REGISTRATION_REQUIRED. Invalid UUID/page/body:
+400 INVALID_REQUEST. Attendees require matching persisted OWNER/ADMIN, otherwise 403 FORBIDDEN.
+Common Auth/account/database errors and their fixed JSON shape are listed in the linked contract.
+All responses use no-store. Pages accept page=0–10000, size=1–100 (defaults 0/20), and return
+items/page/size/hasNext ordered by registeredAt then ID ascending. Attendee fields are only ID,
+userId, firstName, lastName, registeredAt. INTERNAL UI uses status for Register/Registered;
+EXTERNAL uses registrationUrl. [Runnable backend demo](demo-internal-registration-backend.md).
+
 ## Approved organization management contract
 
 [Organization management](../backend/ORGANIZATION_MANAGEMENT.md) is the current complete contract,

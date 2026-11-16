@@ -71,7 +71,7 @@ public class Event {
         return event;
     }
 
-    OpportunityResponse response() {
+    public OpportunityResponse response() {
         return new OpportunityResponse(
                 id,
                 organizationId,

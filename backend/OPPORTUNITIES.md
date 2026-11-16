@@ -1,10 +1,24 @@
 # Opportunity publishing API
 
+## Internal registration extension (V005)
+
+Actual internal registration is now implemented by the backend; this supersedes historical
+out-of-scope statements below. See [EVENT_REGISTRATIONS.md](EVENT_REGISTRATIONS.md) for all five
+endpoints, request/response/error JSON, authentication, pagination, frontend state guidance and
+complete V005/manual application/Render instructions. [Technical demo](../docs/demo-internal-registration-backend.md).
+INTERNAL uses POST/GET/DELETE `/api/opportunities/{eventId}/registrations/me`; personal registration
+lists use GET `/api/users/me/registrations`, and matching OWNER/ADMIN attendee lists use GET
+`/api/organizations/me/opportunities/{eventId}/registrations`. Every account can volunteer.
+No mutation body; verified identity only. Duplicates return 409; registration and cancellation
+require future start. EXTERNAL continues using registrationUrl and rejects internal POST.
+Status and personal lists retain past registrations. V001–V004 are already applied and must
+**never be edited or rerun**; prior V003 application instructions below are historical.
+
 > Current contract: [Organization management](ORGANIZATION_MANAGEMENT.md) supersedes the historical
 > global ORGANIZATION-role permissions and organization-signup limitations below. Everyone retains
 > volunteer capabilities; persisted organization-specific OWNER/ADMIN roles authorize management.
-> The owner confirms V001–V003 are applied: never rerun/edit them. Apply reviewed V004 before the
-> new backend. Original ticket/deployment/verification history below is historical.
+> The owner confirms V001–V004 are applied: never rerun/edit them. Only new V005 is needed for
+> registration. Original ticket/deployment/verification history below is historical.
 
 This ticket implements immediate publication and authenticated organization-scoped listing of
 volunteer opportunities. It reuses Supabase Auth identity verification, persisted application

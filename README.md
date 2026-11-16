@@ -8,14 +8,27 @@ The backend now supports [organization creation and OWNER/ADMIN management](back
 Everyone remains a volunteer; organization authority depends on the persisted organization association
 and separate OWNER/ADMIN role. Both roles can edit their organization and publish future opportunities;
 only OWNER can add/remove registered ADMINs. The current profile adds nullable `organizationRole`.
-The owner confirms V001–V003 are already applied to Supabase. They are unchanged: never edit/rerun
-them. Review the read-only preflight and additive V004, reconcile legacy roles explicitly, and apply
-V004 manually before deploying the new backend. No live SQL or deployment is performed here.
+The owner confirms V001–V004 are already applied to Supabase. They are unchanged: never edit/rerun
+them. The organization-management preflight and V004 application notes are historical. The new
+registration backend requires only additive V005, described below. No live SQL or deployment is performed here.
 [Opportunity contracts](backend/OPPORTUNITIES.md) retain INTERNAL/EXTERNAL registration configuration,
 future-only publication, upcoming-only paginated lists, and existing validation.
 The organization-creation, organization-profile, and opportunity screens subsequently merged into
 main are preserved. Their API adapter and edit/publish controls now use the OWNER/ADMIN contract;
 new ADMIN-team management screens remain separate work.
+
+## Internal event registration backend
+
+The backend supports upcoming INTERNAL event registration for every registered account, including
+organization OWNER/ADMIN. See the [complete API, V005 SQL, operator application procedure and Render
+considerations](backend/EVENT_REGISTRATIONS.md) and [curl technical demo](docs/demo-internal-registration-backend.md).
+New routes: POST/GET/DELETE `/api/opportunities/{eventId}/registrations/me`, GET
+`/api/users/me/registrations`, and OWNER/ADMIN GET
+`/api/organizations/me/opportunities/{eventId}/registrations`. Personal and attendee lists are paginated.
+Apply **V005 only**, once, after already-applied V001–V004; no automatic migration or live execution.
+All routes reuse verified Supabase access tokens and persisted permissions. No frontend changes,
+new environment variables, capacity, approval or attendance. Backend checks: `./mvnw verify` and
+`./mvnw -Ppostgres-it verify` from backend (JDK 21; running Docker for PostgreSQL tests).
 
 ## Approved stack and repository
 
