@@ -69,9 +69,62 @@ The subsequently approved `POST /api/auth/login` contract is documented in
 [backend/LOGIN.md](../backend/LOGIN.md). The subsequently approved `GET /api/users/me` contract is documented in
 [backend/PROFILE.md](../backend/PROFILE.md). It accepts a Supabase Bearer access token, verifies
 identity through the existing Auth client, and returns only that UUID's application profile with
-`Cache-Control: no-store`. No confirmation/completion or profile-editing endpoint is included.
+`Cache-Control: no-store`. SCRUM-45 additionally approves `PATCH /api/users/me` below.
 The DDD transcription below remains source history; endpoint details are resolved only for the
-authorized signup, login, authenticated-profile, and organization-profile tickets.
+authorized signup, login, authenticated-profile, personal-profile-update, and organization-profile tickets.
+
+### Own personal profile update — SCRUM-45
+
+`PATCH /api/users/me` uses `Authorization: Bearer <access_token>` and `Content-Type: application/json`.
+Only the Supabase-verified UUID selects the account, regardless of supplied query parameters.
+All existing account roles retain volunteer access. The full contract and development testing
+instructions are in [backend/PROFILE.md](../backend/PROFILE.md#personal-profile-updates-scrum-45).
+
+Allowed properties are `firstName` and `lastName` (nonblank strings of at most 100 Unicode code
+points), and `bio` (string or null). Omission preserves a value; `bio: null` clears it. Null names,
+empty/Unicode-whitespace-only names, invalid Unicode/NUL, malformed JSON, incorrect types,
+empty objects and unknown properties are rejected as HTTP 400 `INVALID_REQUEST`. Valid values
+are preserved exactly without trimming or truncation. No bio column limit or migration is added;
+the entire UTF-8 JSON request is capped at 16,384 bytes (413 `REQUEST_TOO_LARGE`). Non-JSON
+content types receive 415 `UNSUPPORTED_MEDIA_TYPE`.
+
+Example request:
+
+```json
+{"firstName":"Jordan","bio":"I enjoy volunteering at community gardens."}
+```
+
+Example HTTP 200 response, using the unchanged GET representation:
+
+```json
+{
+  "id":"b6034174-d377-4ad4-b96a-6777660143e6",
+  "email":"student@example.com",
+  "role":"STANDARD",
+  "firstName":"Jordan",
+  "lastName":"Student",
+  "bio":"I enjoy volunteering at community gardens.",
+  "avatarUrl":null,
+  "organizationId":null,
+  "organizationRole":null,
+  "createdAt":"2026-11-01T18:00:00Z"
+}
+```
+
+Prohibited properties include `id`, `email`, `role`, `organizationId`, `organizationRole`,
+`createdAt`, `avatarUrl`, passwords and any Auth/session information. For example,
+`{"firstName":"Jordan","role":"ADMIN","organizationRole":"OWNER","organizationId":null}`
+returns 400 and applies none of the changes. There is no other-account profile update route.
+Updates lock the caller's row and commit atomically; protected columns and omitted values remain unchanged.
+
+Errors retain the `{ "code": "STABLE_CODE", "message": "Safe message." }` convention:
+401 `UNAUTHORIZED` for missing/malformed/expired credentials (with `WWW-Authenticate: Bearer`),
+429 `AUTH_RATE_LIMITED`, 502 `AUTH_RESPONSE_INVALID`, 503 `AUTH_UNAVAILABLE`,
+503 `ACCOUNT_PROVISIONING_REQUIRED` for a verified identity without an account,
+503 `ACCOUNT_UNAVAILABLE` for database/transaction failures, and 500 `INTERNAL_ERROR` for
+unexpected errors. All successful and error responses use `Cache-Control: no-store`.
+The SCRUM-44 frontend should send only changed fields and adopt the full successful response;
+the frontend editor is outside SCRUM-45.
 
 Source: [Detailed Design Document](../Detailed%20Design%20Doc.pdf) (DDD), pp. 5–9 and 12–19. This document records the interface requirements established by the DDD. The DDD does not define individual endpoint paths, HTTP methods, request/response schemas or error contracts; those details remain unspecified rather than being supplied as proposed contracts here.
 
