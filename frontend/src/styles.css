@@ -953,6 +953,12 @@ input::placeholder {
   object-fit: cover;
   border-radius: 8px;
 }
+.internal-registration {
+  margin-top: 12px;
+}
+.internal-registration p:not(:empty) + button {
+  margin-top: 6px;
+}
 .opportunity-section nav {
   align-items: center;
   margin-top: 16px;

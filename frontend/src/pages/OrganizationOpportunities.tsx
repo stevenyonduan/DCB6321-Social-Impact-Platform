@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
 import { ApiError } from '../api/auth';
+import { InternalRegistration } from '../components/InternalRegistration';
 import {
   listOpportunities,
   publishOpportunity,
@@ -157,6 +158,15 @@ export function OrganizationOpportunities({
                   </p>
                   <p>{item.location}</p>
                   <p className="profile-bio">{item.description}</p>
+                  {item.registrationType === 'INTERNAL' && (
+                    <InternalRegistration
+                      key={item.eventStart}
+                      eventId={item.id}
+                      eventStart={item.eventStart}
+                      accessToken={accessToken}
+                      onUnauthorized={onUnauthorized}
+                    />
+                  )}
                   {registration && (
                     <a
                       className="organization-website"
