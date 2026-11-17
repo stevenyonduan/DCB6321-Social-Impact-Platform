@@ -129,14 +129,17 @@ export async function request<T>(
       credentials: 'omit',
       redirect: 'error',
     });
-    const contentType = response.headers
-      .get('Content-Type')
-      ?.split(';')[0]
-      .trim()
-      .toLowerCase();
-    if (contentType !== 'application/json')
-      throw new ApiError(response.status, 'INVALID_RESPONSE');
-    const body: unknown = await response.json();
+    let body: unknown;
+    if (response.status !== 204) {
+      const contentType = response.headers
+        .get('Content-Type')
+        ?.split(';')[0]
+        .trim()
+        .toLowerCase();
+      if (contentType !== 'application/json')
+        throw new ApiError(response.status, 'INVALID_RESPONSE');
+      body = await response.json();
+    }
     if (!response.ok) {
       throw new ApiError(
         response.status,

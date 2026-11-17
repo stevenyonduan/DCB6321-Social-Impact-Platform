@@ -352,6 +352,116 @@ describe('organization opportunities', () => {
     registrationType: 'EXTERNAL',
     registrationUrl: 'https://example.org/register',
   };
+  const internalOpportunity = {
+    ...opportunity,
+    registrationType: 'INTERNAL',
+    registrationUrl: null,
+  };
+  const registrationPath = `/api/opportunities/${opportunity.id}/registrations/me`;
+  const registration = {
+    id: 'dde615fc-81f4-44f9-b4d1-5176bc6e4a41',
+    registeredAt: organization.createdAt,
+  };
+
+  it.each([false, true])(
+    'registers, restores the RSVP, and cancels for an account with owner access %s',
+    async (owner) => {
+      restore();
+      window.history.replaceState(null, '', organizationPath);
+      let registered = false;
+      vi.mocked(fetch).mockImplementation(async (url, options) => {
+        if (url === '/api/users/me')
+          return json(
+            owner
+              ? { ...profile, organizationId, organizationRole: 'OWNER' }
+              : profile,
+          );
+        if (url === opportunityPath)
+          return json({ ...emptyOpportunities, items: [internalOpportunity] });
+        if (url === registrationPath) {
+          if (options?.method === 'POST') {
+            registered = true;
+            return json(
+              { ...registration, eventId: opportunity.id, userId: id },
+              201,
+            );
+          }
+          if (options?.method === 'DELETE') {
+            registered = false;
+            return new Response(null, { status: 204 });
+          }
+          return json({
+            eventId: opportunity.id,
+            registered,
+            registration: registered ? registration : null,
+          });
+        }
+        return json(organization);
+      });
+
+      const view = render(<App />);
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Register' }),
+      );
+      await screen.findByText('Registered');
+      expect(fetch).toHaveBeenLastCalledWith(
+        registrationPath,
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer access-token',
+            Accept: 'application/json',
+          },
+        }),
+      );
+      expect(vi.mocked(fetch).mock.lastCall?.[1]?.body).toBeUndefined();
+
+      view.unmount();
+      render(<App />);
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Cancel registration' }),
+      );
+      await screen.findByRole('button', { name: 'Register' });
+      expect(fetch).toHaveBeenLastCalledWith(
+        registrationPath,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+      expect(screen.queryByText('Registered')).toBeNull();
+    },
+  );
+
+  it('reloads status when a competing request has already registered the user', async () => {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(
+        json({ ...emptyOpportunities, items: [internalOpportunity] }),
+      )
+      .mockResolvedValueOnce(
+        json({
+          eventId: opportunity.id,
+          registered: false,
+          registration: null,
+        }),
+      )
+      .mockResolvedValueOnce(json({ code: 'ALREADY_REGISTERED' }, 409))
+      .mockResolvedValueOnce(
+        json({ eventId: opportunity.id, registered: true, registration }),
+      );
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Register' }),
+    );
+    await screen.findByText('Registered');
+    expect(fetch).toHaveBeenLastCalledWith(
+      registrationPath,
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 
   it.each(['OWNER', 'ADMIN'])(
     'publishes as %s and loads the saved opportunity again after reload',
@@ -462,6 +572,9 @@ describe('organization opportunities', () => {
     ).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('Page 2');
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => url === registrationPath),
+    ).toBe(false);
     expect(fetch).toHaveBeenLastCalledWith(
       opportunityPath.replace('page=0', 'page=1'),
       expect.anything(),
