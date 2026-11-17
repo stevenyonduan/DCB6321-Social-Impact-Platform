@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarDays, Clock, MapPin, X } from 'lucide-react';
 import { ApiError } from '../api/auth';
 import { loadUpcomingOpportunityDescription } from '../api/opportunities';
 import { registrationRequest, type MyRegistration } from '../api/registrations';
-import { isOrganizationPage } from '../navigation';
-import { PageLink } from './PageLink';
-
-const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'full' });
-const time = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
-const dateAndTime = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
+import { EventDetailsDialog } from './EventDetailsDialog';
 
 export function RegisteredEventDialog({
   event,
@@ -28,7 +19,6 @@ export function RegisteredEventDialog({
   onClose: () => void;
   onCanceled: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const keepButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const pending = useRef<AbortController | null>(null);
@@ -40,18 +30,10 @@ export function RegisteredEventDialog({
   const startAt = Date.parse(event.eventStart);
   const [lookupDescription] = useState(() => startAt > now);
   const [description, setDescription] = useState<string | null>();
-  const start = new Date(startAt);
-  const end = new Date(event.eventEnd);
-  const startDay = fullDate.format(start);
   const started = closed || startAt <= now;
-  const ended = end.getTime() <= now;
-  const organizationPage = `organizations/${event.organizationId}`;
+  const ended = Date.parse(event.eventEnd) <= now;
 
-  useEffect(() => {
-    const element = dialog.current;
-    if (element && !element.open) element.showModal();
-    return () => pending.current?.abort();
-  }, []);
+  useEffect(() => () => pending.current?.abort(), []);
 
   useEffect(() => {
     if (confirm) keepButton.current?.focus();
@@ -161,74 +143,16 @@ export function RegisteredEventDialog({
   }
 
   return (
-    <dialog
-      ref={dialog}
-      className="preview-dialog registered-event-dialog"
-      aria-labelledby="registered-event-title"
-      onCancel={(action) => {
-        action.preventDefault();
+    <EventDetailsDialog
+      event={event}
+      description={description}
+      showDescription={lookupDescription}
+      status={ended ? 'Past event' : started ? 'In progress' : 'Registered'}
+      busy={saving}
+      onClose={() => {
         if (!pending.current) onClose();
       }}
-      onClick={(click) => {
-        if (click.target === click.currentTarget && !pending.current) onClose();
-      }}
     >
-      <div className="registered-event-heading">
-        <div>
-          <p>{ended ? 'Past event' : started ? 'In progress' : 'Registered'}</p>
-          <h2 id="registered-event-title">{event.title}</h2>
-        </div>
-        <button
-          className="dialog-close"
-          type="button"
-          aria-label="Close event details"
-          disabled={saving}
-          onClick={onClose}
-        >
-          <X aria-hidden="true" />
-        </button>
-      </div>
-      <ul className="registered-event-meta">
-        <li>
-          <CalendarDays aria-hidden="true" />
-          {startDay}
-        </li>
-        <li>
-          <Clock aria-hidden="true" />
-          <span>
-            <time dateTime={event.eventStart}>{time.format(start)}</time>
-            {' – '}
-            <time dateTime={event.eventEnd}>
-              {fullDate.format(end) === startDay
-                ? time.format(end)
-                : dateAndTime.format(end)}
-            </time>
-          </span>
-        </li>
-        <li>
-          <MapPin aria-hidden="true" />
-          {event.location}
-        </li>
-      </ul>
-      {lookupDescription && (
-        <section aria-labelledby="registered-event-description">
-          <h3 id="registered-event-description">Description</h3>
-          {description === undefined ? (
-            <p className="profile-empty" role="status">
-              Loading description…
-            </p>
-          ) : description ? (
-            <p className="profile-bio">{description}</p>
-          ) : (
-            <p className="profile-empty">Description unavailable.</p>
-          )}
-        </section>
-      )}
-      {isOrganizationPage(organizationPage) && (
-        <PageLink className="text-link" page={organizationPage}>
-          View organization
-        </PageLink>
-      )}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -287,6 +211,6 @@ export function RegisteredEventDialog({
           </div>
         )
       )}
-    </dialog>
+    </EventDetailsDialog>
   );
 }

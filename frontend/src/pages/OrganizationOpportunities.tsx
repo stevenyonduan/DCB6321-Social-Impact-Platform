@@ -4,6 +4,7 @@ import { ApiError } from '../api/auth';
 import { InternalRegistration } from '../components/InternalRegistration';
 import {
   listOpportunities,
+  opportunityWebUrl,
   publishOpportunity,
   type RegistrationType,
 } from '../api/opportunities';
@@ -12,18 +13,6 @@ const eventTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
-
-function webUrl(value: string | null) {
-  if (!value || !/^https?:\/\//i.test(value)) return null;
-  try {
-    const url = new URL(value);
-    return url.hostname && !url.username && !url.password && url.port !== '0'
-      ? url
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 function localDate(value: string) {
   const date = new Date(value);
@@ -133,8 +122,8 @@ export function OrganizationOpportunities({
       {data && data.items.length > 0 && (
         <ul className="opportunity-list">
           {data.items.map((item) => {
-            const image = webUrl(item.imageUrl);
-            const registration = webUrl(item.registrationUrl);
+            const image = opportunityWebUrl(item.imageUrl);
+            const registration = opportunityWebUrl(item.registrationUrl);
             return (
               <li key={item.id}>
                 {image && (
@@ -284,7 +273,7 @@ function PublishDialog({
       );
       return;
     }
-    if (type === 'EXTERNAL' && !webUrl(registrationUrl)) {
+    if (type === 'EXTERNAL' && !opportunityWebUrl(registrationUrl)) {
       setError('Enter an HTTP or HTTPS registration URL.');
       return;
     }

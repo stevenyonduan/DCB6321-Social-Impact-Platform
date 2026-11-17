@@ -13,7 +13,7 @@ export type PublishOpportunityInput = {
   registrationUrl: string | null;
 };
 
-type Opportunity = PublishOpportunityInput & {
+export type Opportunity = PublishOpportunityInput & {
   id: string;
   organizationId: string;
   creatorId: string;
@@ -26,6 +26,18 @@ type OpportunityPage = {
   size: number;
   hasNext: boolean;
 };
+
+export function opportunityWebUrl(value: string | null) {
+  if (!value || !/^https?:\/\//i.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return url.hostname && !url.username && !url.password && url.port !== '0'
+      ? url
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function isOpportunity(
   value: unknown,
