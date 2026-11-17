@@ -1,19 +1,5 @@
 # API and interfaces — Detailed Design Document requirements
 
-## Standalone volunteer posts and interactions
-
-The [social posts contract](../backend/SOCIAL_POSTS.md) documents authenticated backend-only
-post creation (JSON text or multipart JPEG/PNG), feed and individual retrieval, author editing/deletion,
-image replacement/removal, idempotent LIKE/SAVE, private `/api/users/me/saved-posts`, and text-only
-comment creation/listing/author deletion. Routes are under `/api/posts`; all require an existing
-verified application account, including OWNER/ADMIN volunteers. Images have an inclusive 5 MiB
-limit and optional server-only Storage setup. SQL pages return items/page/size/hasNext with bounded
-stable ordering. V006 is additive and manually reviewed/applied; no live migration runs at startup.
-The linked guide contains every endpoint, full request/response examples, errors, frontend guidance,
-and cleanup limitations. Sharing is stable UUID retrieval for future authenticated frontend routes.
-Group posting remains deferred pending SCRUM-15; email-verification enforcement is deferred with
-the approved confirmation-disabled signup flow. This does not claim full SCRUM-12 completion.
-
 ## Approved internal event registration contract
 
 The [complete registration contract](../backend/EVENT_REGISTRATIONS.md) defines authentication,

@@ -3,11 +3,6 @@ spring:
     name: sip-backend
   profiles:
     default: local
-  servlet:
-    multipart:
-      max-file-size: 5242880B
-      max-request-size: 5308416B
-      file-size-threshold: 0B
   sql:
     init:
       mode: never
