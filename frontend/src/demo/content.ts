@@ -33,26 +33,3 @@ export const opportunities = [
     artwork: 'OPEN NEW CHAPTERS',
   },
 ] as const;
-
-export const posts = [
-  {
-    id: 'garden-post',
-    author: 'Neighborhood Garden Collective',
-    byline: 'Community organization · 2 hours ago',
-    avatar: 'garden',
-    text: 'Fresh soil, new connections, and a whole lot of good. Thank you to everyone who spent the morning helping our community garden grow! 🌱',
-    artwork: true,
-    likes: 12,
-    comments: 3,
-  },
-  {
-    id: 'volunteer-post',
-    author: 'Jordan Taylor',
-    byline: 'Volunteer · 4 hours ago',
-    avatar: 'JT',
-    text: 'My first time volunteering at a food packing event today. Came on my own and left knowing a few more neighbors. Already looking forward to the next one!',
-    artwork: false,
-    likes: 8,
-    comments: 2,
-  },
-] as const;

@@ -61,7 +61,13 @@ export function Header({
                 </PageLink>
                 <PageLink
                   page="profile"
-                  aria-current={page === 'profile' ? 'page' : undefined}
+                  aria-current={
+                    page === 'profile'
+                      ? 'page'
+                      : page === 'profile/saved-posts'
+                        ? 'location'
+                        : undefined
+                  }
                 >
                   Profile
                 </PageLink>

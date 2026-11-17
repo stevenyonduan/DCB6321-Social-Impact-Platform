@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Pencil } from 'lucide-react';
+import { Bookmark, ChevronRight, Pencil } from 'lucide-react';
 import { ApiError, updateProfile, type Profile } from '../api/auth';
+import { PageLink } from '../components/PageLink';
 import { ProfileOrganization } from './ProfileOrganization';
 
 const memberSince = new Intl.DateTimeFormat('en-US', {
@@ -233,14 +234,23 @@ export function ProfilePage({
             </fieldset>
           </form>
         )}
-        <section className="profile-card" aria-labelledby="profile-bio">
-          <h2 id="profile-bio">Bio</h2>
-          {profile.bio?.trim() ? (
-            <p className="profile-bio">{profile.bio}</p>
-          ) : (
-            <p className="profile-empty">No bio yet.</p>
-          )}
-        </section>
+        <div className="profile-community">
+          <section className="profile-card" aria-labelledby="profile-bio">
+            <h2 id="profile-bio">Bio</h2>
+            {profile.bio?.trim() ? (
+              <p className="profile-bio">{profile.bio}</p>
+            ) : (
+              <p className="profile-empty">No bio yet.</p>
+            )}
+          </section>
+          <PageLink
+            className="profile-card saved-posts-link"
+            page="profile/saved-posts"
+          >
+            <Bookmark aria-hidden="true" /> Saved posts{' '}
+            <ChevronRight aria-hidden="true" />
+          </PageLink>
+        </div>
         <section className="profile-card" aria-labelledby="profile-account">
           <h2 id="profile-account">Account details</h2>
           <dl>
