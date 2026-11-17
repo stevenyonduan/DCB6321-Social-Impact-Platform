@@ -54,6 +54,12 @@ export function Header({
                   Feed
                 </PageLink>
                 <PageLink
+                  page="events"
+                  aria-current={page === 'events' ? 'page' : undefined}
+                >
+                  Events
+                </PageLink>
+                <PageLink
                   page="profile"
                   aria-current={page === 'profile' ? 'page' : undefined}
                 >

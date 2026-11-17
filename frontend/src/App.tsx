@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Header, Footer } from './components/Shell';
 import { Landing } from './pages/Landing';
 import { Account } from './pages/Account';
@@ -14,11 +14,16 @@ import {
   NavigationContext,
 } from './navigation';
 
+const MyEvents = lazy(() =>
+  import('./pages/MyEvents').then(({ MyEvents }) => ({ default: MyEvents })),
+);
+
 const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
   landing: 'Making Service Social',
   login: 'Welcome back',
   signup: 'Join the community',
   home: 'Your community',
+  events: 'My Events',
   profile: 'Profile',
 };
 
@@ -78,7 +83,11 @@ export default function App() {
               onEnter={async (input, signal) => {
                 await signIn(visiblePage, input, signal);
                 if (!signal.aborted)
-                  navigate(isOrganizationPage(page) ? page : 'home');
+                  navigate(
+                    isOrganizationPage(page) || page === 'events'
+                      ? page
+                      : 'home',
+                  );
               }}
             />
           )}
@@ -102,6 +111,21 @@ export default function App() {
         )}
         {visiblePage === 'home' && state.status === 'ready' && (
           <Home name={state.profile.firstName} />
+        )}
+        {visiblePage === 'events' && state.status === 'ready' && (
+          <Suspense
+            fallback={
+              <section className="account-section" role="status">
+                Loading your events…
+              </section>
+            }
+          >
+            <MyEvents
+              key={state.profile.id}
+              accessToken={state.accessToken}
+              onUnauthorized={expireSession}
+            />
+          </Suspense>
         )}
         {visiblePage === 'profile' && state.status === 'ready' && (
           <ProfilePage

@@ -72,6 +72,22 @@ export function listOpportunities(
   );
 }
 
+export async function loadUpcomingOpportunityDescription(
+  organizationId: string,
+  eventId: string,
+  token: string,
+  signal: AbortSignal,
+) {
+  for (let page = 0; page <= 10_000; page++) {
+    const result = await listOpportunities(organizationId, page, token, signal);
+    signal.throwIfAborted();
+    const opportunity = result.items.find((item) => item.id === eventId);
+    if (opportunity) return opportunity.description;
+    if (!result.hasNext) break;
+  }
+  return null;
+}
+
 export function publishOpportunity(
   id: string,
   input: PublishOpportunityInput,
