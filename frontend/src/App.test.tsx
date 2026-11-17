@@ -172,10 +172,12 @@ describe('organization profile', () => {
           json({ ...profile, organizationId, organizationRole }),
         )
         .mockResolvedValueOnce(json(organization))
+        .mockResolvedValueOnce(json(emptyFeed))
         .mockResolvedValueOnce(json(organization))
         .mockResolvedValueOnce(json(emptyOpportunities))
         .mockResolvedValueOnce(json({ ...organization, website: null }));
       render(<App />);
+      await screen.findByText('You haven’t posted yet.');
       await userEvent.click(
         await screen.findByRole('link', { name: organization.name }),
       );
@@ -209,6 +211,7 @@ describe('organization profile', () => {
     window.history.replaceState(null, '', '/profile');
     vi.mocked(fetch)
       .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(emptyFeed))
       .mockResolvedValueOnce(
         json({ organization, ownerId: id, organizationRole: 'OWNER' }, 201),
       )
@@ -217,6 +220,7 @@ describe('organization profile', () => {
       )
       .mockResolvedValueOnce(json(organization));
     render(<App />);
+    await screen.findByText('You haven’t posted yet.');
     const details = await screen.findByRole('region', {
       name: 'Account details',
     });
@@ -237,7 +241,7 @@ describe('organization profile', () => {
     await screen.findByRole('button', { name: 'Edit profile' });
     expect(window.location.pathname).toBe(organizationPath);
     expect(fetch).toHaveBeenNthCalledWith(
-      2,
+      3,
       '/api/organizations',
       expect.objectContaining({
         method: 'POST',
@@ -252,7 +256,7 @@ describe('organization profile', () => {
       }),
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      3,
+      4,
       '/api/users/me',
       expect.anything(),
     );
@@ -263,12 +267,14 @@ describe('organization profile', () => {
     window.history.replaceState(null, '', '/profile');
     vi.mocked(fetch)
       .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(emptyFeed))
       .mockResolvedValueOnce(json({ code: 'MEMBERSHIP_CONFLICT' }, 409))
       .mockResolvedValueOnce(
         json({ ...profile, organizationId, organizationRole: 'OWNER' }),
       )
       .mockResolvedValueOnce(json(organization));
     render(<App />);
+    await screen.findByText('You haven’t posted yet.');
     await userEvent.click(
       await screen.findByRole('button', { name: 'Create organization' }),
     );
@@ -1378,12 +1384,144 @@ describe('my events', () => {
   });
 });
 
+describe('profile activity', () => {
+  function post(number: number, authorId = id) {
+    return {
+      id: `activity-${number}`,
+      authorId,
+      textContent: `Activity post ${number}`,
+      imageReference: null,
+      createdAt: new Date(Date.UTC(2026, 10, 17, 0, -number)).toISOString(),
+      likeCount: 0,
+      commentCount: 0,
+      liked: false,
+      saved: false,
+    };
+  }
+
+  it('fills the initial batch from multiple pages and loads older matches near the bottom', async () => {
+    let reachBottom: (() => void) | undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          reachBottom = () =>
+            callback(
+              [{ isIntersecting: true } as IntersectionObserverEntry],
+              this as unknown as IntersectionObserver,
+            );
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    const secondPage = feedPath.replace('page=0', 'page=1');
+    const thirdPage = feedPath.replace('page=0', 'page=2');
+    let resolveSecond!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/users/me') return json(profile);
+      if (url === feedPath)
+        return json({
+          ...emptyFeed,
+          hasNext: true,
+          items: [
+            post(1),
+            ...Array.from({ length: 19 }, (_, index) =>
+              post(index + 101, 'another-author'),
+            ),
+          ],
+        });
+      if (url === secondPage)
+        return new Promise((resolve) => {
+          resolveSecond = resolve;
+        });
+      if (url === thirdPage)
+        return json({ ...emptyFeed, page: 2, items: [post(6), post(7)] });
+      throw new Error(`Unexpected URL ${url}`);
+    });
+
+    render(<App />);
+    const activity = within(
+      await screen.findByRole('region', { name: 'Activity' }),
+    );
+    await activity.findByText('Activity post 1');
+    expect(activity.queryByText('Activity post 101')).toBeNull();
+    expect(activity.queryByText('You haven’t posted yet.')).toBeNull();
+    expect(fetch).toHaveBeenCalledWith(secondPage, expect.anything());
+    await act(async () =>
+      resolveSecond(
+        json({
+          ...emptyFeed,
+          page: 1,
+          hasNext: true,
+          items: [post(1), post(2), post(3), post(4), post(5), post(6)],
+        }),
+      ),
+    );
+    await activity.findByRole('button', { name: 'Load older posts' });
+    expect(activity.getAllByRole('article')).toHaveLength(5);
+    expect(activity.queryByText('Activity post 6')).toBeNull();
+    expect(fetch).not.toHaveBeenCalledWith(thirdPage, expect.anything());
+
+    act(() => reachBottom?.());
+    await activity.findByText('Activity post 7');
+    expect(
+      activity
+        .getAllByRole('article')
+        .map((card) => card.querySelector('.post-text')?.textContent),
+    ).toEqual(
+      Array.from({ length: 7 }, (_, index) => `Activity post ${index + 1}`),
+    );
+    expect(
+      activity.queryByRole('button', { name: 'Load older posts' }),
+    ).toBeNull();
+  });
+
+  it('retries the failed page and only shows the empty state after the feed is exhausted', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({
+          ...emptyFeed,
+          items: [post(1, 'another-author')],
+          hasNext: true,
+        }),
+      )
+      .mockResolvedValueOnce(json({ code: 'SOCIAL_UNAVAILABLE' }, 503))
+      .mockResolvedValueOnce(json({ ...emptyFeed, page: 1 }));
+    render(<App />);
+
+    const activity = within(
+      await screen.findByRole('region', { name: 'Activity' }),
+    );
+    const retry = await activity.findByRole('button', {
+      name: 'Retry activity',
+    });
+    expect(activity.queryByText('You haven’t posted yet.')).toBeNull();
+    await userEvent.click(retry);
+    await activity.findByText('You haven’t posted yet.');
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      '/api/users/me',
+      feedPath,
+      feedPath.replace('page=0', 'page=1'),
+      feedPath.replace('page=0', 'page=1'),
+    ]);
+  });
+});
+
 describe('profile page', () => {
   it('prefills the editor and cancels without saving the draft', async () => {
     restore();
     window.history.replaceState(null, '', '/profile');
-    vi.mocked(fetch).mockResolvedValue(json({ ...profile, bio: 'Gardens' }));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json({ ...profile, bio: 'Gardens' }))
+      .mockResolvedValueOnce(json(emptyFeed));
     render(<App />);
+    await screen.findByText('You haven’t posted yet.');
 
     await userEvent.click(
       await screen.findByRole('button', { name: 'Edit profile' }),
@@ -1407,7 +1545,7 @@ describe('profile page', () => {
       screen.queryByRole('form', { name: 'Edit your profile' }),
     ).toBeNull();
     expect(screen.getByRole('heading', { name: 'Sam Example' })).toBeTruthy();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('sends the changed fields and uses the returned profile across pages', async () => {
@@ -1415,9 +1553,11 @@ describe('profile page', () => {
     window.history.replaceState(null, '', '/profile');
     vi.mocked(fetch)
       .mockResolvedValueOnce(json({ ...profile, bio: 'Gardens' }))
+      .mockResolvedValueOnce(json(emptyFeed))
       .mockResolvedValueOnce(json({ ...profile, firstName: 'Jordan' }));
     const user = userEvent.setup();
     render(<App />);
+    await screen.findByText('You haven’t posted yet.');
 
     await user.click(
       await screen.findByRole('button', { name: 'Edit profile' }),
@@ -1458,9 +1598,11 @@ describe('profile page', () => {
     window.history.replaceState(null, '', '/profile');
     vi.mocked(fetch)
       .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(emptyFeed))
       .mockResolvedValueOnce(json({ code: 'REQUEST_TOO_LARGE' }, 413))
       .mockResolvedValueOnce(json({ ...profile, bio: 'Gardens' }));
     render(<App />);
+    await screen.findByText('You haven’t posted yet.');
 
     await userEvent.click(
       await screen.findByRole('button', { name: 'Edit profile' }),
@@ -1474,11 +1616,11 @@ describe('profile page', () => {
       'textContent',
       'Your profile update is too large. Try shortening your bio.',
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     fireEvent.change(bio, { target: { value: 'Gardens' } });
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(bio.value).toBe('Gardens');
     expect(screen.getByText('No bio yet.')).toBeTruthy();

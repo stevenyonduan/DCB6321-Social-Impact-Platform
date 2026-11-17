@@ -545,7 +545,8 @@ input::placeholder {
   border-radius: 12px;
   overflow-wrap: anywhere;
 }
-.profile-card h2 {
+.profile-card h2,
+.profile-section-heading {
   margin-bottom: 12px;
   font-size: 20px;
 }
@@ -832,6 +833,9 @@ input::placeholder {
   display: grid;
   align-content: start;
   gap: 14px;
+}
+.profile-account-details {
+  align-self: start;
 }
 .saved-posts-link {
   display: flex;
