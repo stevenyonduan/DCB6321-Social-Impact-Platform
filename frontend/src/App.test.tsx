@@ -17,9 +17,11 @@ const auth = vi.hoisted(() => ({
   getSession: vi.fn(),
   setSession: vi.fn(),
   signOut: vi.fn(),
+  storageFrom: vi.fn(),
 }));
 vi.mock('./auth/client', () => ({
   authClient: () => ({
+    storage: { from: auth.storageFrom },
     auth: {
       ...auth,
       onAuthStateChange: (
@@ -44,6 +46,8 @@ const organizationId = 'a975e6c1-38b9-438a-a798-12741f117870';
 const organizationPath = `/organizations/${organizationId}`;
 const opportunityPath = `/api${organizationPath}/opportunities?page=0&size=20`;
 const emptyOpportunities = { items: [], page: 0, size: 20, hasNext: false };
+const feedPath = '/api/posts?page=0&size=20';
+const emptyFeed = { items: [], page: 0, size: 20, hasNext: false };
 const organization = {
   id: organizationId,
   name: 'Atlanta Community Gardens',
@@ -107,7 +111,9 @@ describe('organization profile', () => {
         await screen.findByRole('link', { name: 'SOW feed' }),
       );
       expect(window.location.pathname).toBe('/home');
-      expect(screen.getByRole('heading', { name: /Hi, Sam/ })).toBeTruthy();
+      expect(
+        await screen.findByRole('heading', { name: /Hi, Sam/ }),
+      ).toBeTruthy();
     },
   );
 
@@ -620,11 +626,11 @@ beforeEach(() => {
   });
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) =>
-      url.endsWith('/users/me')
-        ? json(profile)
-        : json(result(), url.endsWith('/signup') ? 201 : 200),
-    ),
+    vi.fn(async (url: string) => {
+      if (url.endsWith('/users/me')) return json(profile);
+      if (url === feedPath) return json(emptyFeed);
+      return json(result(), url.endsWith('/signup') ? 201 : 200);
+    }),
   );
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
@@ -801,7 +807,7 @@ describe('backend account integration', () => {
       emit('TOKEN_REFRESHED', { ...session(), access_token: 'new-access' }),
     );
     await waitFor(() =>
-      expect(fetch).toHaveBeenLastCalledWith(
+      expect(fetch).toHaveBeenCalledWith(
         '/api/users/me',
         expect.objectContaining({
           headers: {
@@ -829,7 +835,7 @@ describe('backend account integration', () => {
     );
   });
 
-  it('preserves community and opportunity previews after real authentication', async () => {
+  it('shows the live feed empty state and the existing opportunity previews', async () => {
     restore();
     window.history.replaceState(null, '', '/home');
     render(<App />);
@@ -837,12 +843,8 @@ describe('backend account integration', () => {
     const events = screen.getByRole('region', {
       name: 'Opportunities near you',
     });
-    expect(within(feed).getAllByRole('article')).toHaveLength(2);
+    expect(await within(feed).findByText(/No posts yet/)).toBeTruthy();
     expect(within(events).getAllByRole('article')).toHaveLength(3);
-    await userEvent.click(
-      within(feed).getAllByRole('button', { name: 'Like' })[0],
-    );
-    expect(within(feed).getByText('13 likes · 3 comments')).toBeTruthy();
     await userEvent.click(
       within(events).getAllByRole('button', { name: 'Take a look' })[0],
     );
@@ -920,6 +922,242 @@ describe('backend account integration', () => {
     expect(screen.queryByText(/provider secret/)).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(window.location.pathname).toBe('/signup');
+  });
+});
+
+describe('community posts', () => {
+  const existing = {
+    id: 'existing-post',
+    authorId: 'other-account',
+    textContent: 'We packed meals for Atlanta neighbors.',
+    imageReference: null,
+    createdAt: '2026-11-17T00:00:00Z',
+    likeCount: 0,
+    commentCount: 1,
+    liked: false,
+    saved: false,
+  };
+  const created = {
+    ...existing,
+    id: 'new-post',
+    authorId: id,
+    textContent: 'I signed up for the park cleanup.',
+    commentCount: 0,
+  };
+  const savedPath = '/api/users/me/saved-posts?page=0&size=100';
+
+  it('publishes inline, shows the post first, and loads comments only when expanded', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const commentPath = `/api/posts/${existing.id}/comments`;
+    const threadPath = `${commentPath}?page=0&size=100`;
+    const comment = {
+      id: 'existing-comment',
+      postId: existing.id,
+      authorId: existing.authorId,
+      content: 'Thank you for helping!',
+      createdAt: existing.createdAt,
+    };
+    vi.mocked(fetch).mockImplementation(async (url, options) => {
+      if (url === '/api/users/me') return json(profile);
+      if (url === feedPath) return json({ ...emptyFeed, items: [existing] });
+      if (url === '/api/posts' && options?.method === 'POST')
+        return json(created, 201);
+      if (url === `/api/posts/${existing.id}/like`)
+        return new Response(null, { status: 204 });
+      if (url === threadPath)
+        return json({ items: [comment], page: 0, size: 100, hasNext: false });
+      if (url === commentPath)
+        return json(
+          {
+            ...comment,
+            id: 'new-comment',
+            authorId: id,
+            content: 'Glad to hear it!',
+          },
+          201,
+        );
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    render(<App />);
+    await screen.findByText(existing.textContent);
+    expect(screen.queryByText(comment.content)).toBeNull();
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => url === threadPath),
+    ).toBe(false);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Share a little good/ }),
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Write a post' }),
+      created.textContent,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Post' }));
+    await screen.findByText('Post published.');
+    const feed = within(screen.getByRole('region', { name: 'Your community' }));
+    const cards = feed.getAllByRole('article');
+    expect(within(cards[0]).getByText(created.textContent)).toBeTruthy();
+    expect(within(cards[0]).getByText('Sam Example')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/posts',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ textContent: created.textContent }),
+      }),
+    );
+
+    const card = within(cards[1]);
+    await userEvent.click(card.getByRole('button', { name: 'Like' }));
+    expect(
+      (await card.findByRole('button', { name: 'Liked' })).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    await userEvent.click(card.getByRole('button', { name: 'Comment' }));
+    await card.findByText(comment.content);
+    await userEvent.type(
+      card.getByRole('textbox', { name: 'Write a comment' }),
+      'Glad to hear it!',
+    );
+    await userEvent.click(card.getByRole('button', { name: 'Post comment' }));
+    await card.findByText('Glad to hear it!');
+    expect(card.getByText('1 like · 2 comments')).toBeTruthy();
+    await userEvent.type(
+      card.getByRole('textbox', { name: 'Write a comment' }),
+      'Discard this draft',
+    );
+    await userEvent.click(card.getByRole('button', { name: 'Cancel' }));
+    expect(card.queryByText(comment.content)).toBeNull();
+    expect(card.queryByRole('textbox')).toBeNull();
+  });
+
+  it('uploads a selected image as multipart and can show a private image through Storage', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const imageReference =
+      'social-posts/posts/bb73653c-38f9-4137-ad8d-668350f19012.png';
+    const download = vi.fn().mockResolvedValue({
+      data: new Blob(['png'], { type: 'image/png' }),
+      error: null,
+    });
+    auth.storageFrom.mockReturnValue({
+      getPublicUrl: () => ({
+        data: { publicUrl: 'https://example.test/public.png' },
+      }),
+      download,
+    });
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL = () => 'blob:test-post-image';
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json(emptyFeed))
+      .mockResolvedValueOnce(
+        json({ ...created, textContent: null, imageReference }, 201),
+      );
+    render(<App />);
+    await screen.findByText(/No posts yet/);
+    await userEvent.click(
+      screen.getByRole('button', { name: /Share a little good/ }),
+    );
+    const file = new File(['png'], 'photo.png', { type: 'image/png' });
+    const chooser = screen.getByLabelText<HTMLInputElement>(
+      'Add image (optional)',
+    );
+    expect(chooser.multiple).toBe(false);
+    expect(chooser.getAttribute('accept')).toBe('image/jpeg,image/png');
+    expect(
+      document.getElementById(chooser.getAttribute('aria-describedby')!)
+        ?.textContent,
+    ).toContain('One JPEG or PNG image, up to 5 MB.');
+    await userEvent.upload(chooser, file);
+    expect(
+      screen.getByRole('img', { name: 'Selected image preview' }),
+    ).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Post' }));
+    const image = await screen.findByRole('img', {
+      name: 'Image attached to this post',
+    });
+    const request = vi.mocked(fetch).mock.lastCall?.[1];
+    expect(request?.method).toBe('POST');
+    expect(new Headers(request?.headers).has('Content-Type')).toBe(false);
+    expect((request?.body as FormData).get('image')).toBe(file);
+    expect(image.getAttribute('src')).toBe('https://example.test/public.png');
+    fireEvent.error(image);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('img', { name: 'Image attached to this post' })
+          .getAttribute('src'),
+      ).toBe('blob:test-post-image'),
+    );
+    expect(download).toHaveBeenCalled();
+  });
+
+  it('uses a private Saved posts page and keeps unsaved cards in place until reload', async () => {
+    restore();
+    window.history.replaceState(null, '', '/profile');
+    let saved = [
+      { ...created, saved: true },
+      { ...existing, saved: true },
+    ];
+    vi.mocked(fetch).mockImplementation(async (url, options) => {
+      if (url === '/api/users/me') return json(profile);
+      if (url === savedPath)
+        return json({ items: saved, page: 0, size: 100, hasNext: false });
+      if (url === `/api/posts/${existing.id}/save`) {
+        saved = saved.filter((post) => post.id !== existing.id);
+        if (options?.method === 'PUT')
+          saved = [{ ...existing, saved: true }, ...saved];
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    let view = render(<App />);
+    await userEvent.click(
+      await screen.findByRole('link', { name: 'Saved posts' }),
+    );
+    await screen.findByText(existing.textContent);
+    expect(window.location.pathname).toBe('/profile/saved-posts');
+    expect(screen.getByRole('link', { name: 'Back to profile' })).toBeTruthy();
+    const oldCard = within(
+      screen.getByRole('article', { name: 'Community member' }),
+    );
+    await userEvent.click(oldCard.getByRole('button', { name: 'Saved' }));
+    expect(
+      (await oldCard.findByRole('button', { name: 'Save' })).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('false');
+    expect(oldCard.getByText(existing.textContent)).toBeTruthy();
+    await userEvent.click(oldCard.getByRole('button', { name: 'Save' }));
+    await oldCard.findByRole('button', { name: 'Saved' });
+    expect(screen.getAllByRole('article')[1]).toBe(
+      oldCard.getByText(existing.textContent).closest('article'),
+    );
+
+    view.unmount();
+    view = render(<App />);
+    await screen.findByText(existing.textContent);
+    expect(
+      within(screen.getAllByRole('article')[0]).getByText(existing.textContent),
+    ).toBeTruthy();
+    await userEvent.click(
+      within(screen.getAllByRole('article')[0]).getByRole('button', {
+        name: 'Saved',
+      }),
+    );
+    await screen.findByRole('button', { name: 'Save' });
+    view.unmount();
+    render(<App />);
+    await screen.findByText(created.textContent);
+    expect(screen.queryByText(existing.textContent)).toBeNull();
   });
 });
 
@@ -1207,8 +1445,12 @@ describe('profile page', () => {
     ).toBeTruthy();
     expect(screen.getByText('No bio yet.')).toBeTruthy();
     await user.click(screen.getByRole('link', { name: 'Feed' }));
-    expect(screen.getByRole('heading', { name: /Hi, Jordan/ })).toBeTruthy();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      await screen.findByRole('heading', { name: /Hi, Jordan/ }),
+    ).toBeTruthy();
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/users/me'),
+    ).toHaveLength(2);
   });
 
   it('keeps the draft when a save fails and lets the user retry', async () => {
@@ -1277,9 +1519,13 @@ describe('profile page', () => {
 
     await userEvent.click(nav.getByRole('link', { name: 'Feed' }));
     expect(window.location.pathname).toBe('/home');
-    expect(screen.getByRole('heading', { name: /Hi, Sam/ })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: /Hi, Sam/ }),
+    ).toBeTruthy();
     expect(screen.queryByText('sam@example.com')).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/users/me'),
+    ).toHaveLength(1);
 
     window.history.back();
     await screen.findByRole('heading', { name: 'Sam Example' });

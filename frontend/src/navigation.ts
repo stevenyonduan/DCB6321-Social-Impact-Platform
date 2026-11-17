@@ -8,6 +8,7 @@ export type Page =
   | 'home'
   | 'events'
   | 'profile'
+  | 'profile/saved-posts'
   | OrganizationPage;
 export const NavigationContext = createContext<(page: Page) => void>(() => {});
 
@@ -22,6 +23,7 @@ export function isAccountPage(page: Page) {
     page === 'home' ||
     page === 'events' ||
     page === 'profile' ||
+    page === 'profile/saved-posts' ||
     isOrganizationPage(page)
   );
 }
@@ -33,6 +35,7 @@ export function getPage(): Page {
   if (path === '/home') return 'home';
   if (path === '/events') return 'events';
   if (path === '/profile') return 'profile';
+  if (path === '/profile/saved-posts') return 'profile/saved-posts';
   const route = path.slice(1);
   if (isOrganizationPage(route)) return route;
   return 'landing';

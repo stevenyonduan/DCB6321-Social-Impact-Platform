@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Header, Footer } from './components/Shell';
 import { Landing } from './pages/Landing';
 import { Account } from './pages/Account';
-import { Home } from './pages/Home';
 import { ProfilePage } from './pages/Profile';
 import { OrganizationPage } from './pages/Organization';
 import { useAccount } from './auth/useAccount';
@@ -17,6 +16,14 @@ import {
 const MyEvents = lazy(() =>
   import('./pages/MyEvents').then(({ MyEvents }) => ({ default: MyEvents })),
 );
+const Home = lazy(() =>
+  import('./pages/Home').then(({ Home }) => ({ default: Home })),
+);
+const SavedPosts = lazy(() =>
+  import('./pages/SavedPosts').then(({ SavedPosts }) => ({
+    default: SavedPosts,
+  })),
+);
 
 const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
   landing: 'Making Service Social',
@@ -25,6 +32,7 @@ const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
   home: 'Your community',
   events: 'My Events',
   profile: 'Profile',
+  'profile/saved-posts': 'Saved posts',
 };
 
 export default function App() {
@@ -84,7 +92,9 @@ export default function App() {
                 await signIn(visiblePage, input, signal);
                 if (!signal.aborted)
                   navigate(
-                    isOrganizationPage(page) || page === 'events'
+                    isOrganizationPage(page) ||
+                      page === 'events' ||
+                      page === 'profile/saved-posts'
                       ? page
                       : 'home',
                   );
@@ -109,9 +119,28 @@ export default function App() {
             </div>
           </section>
         )}
-        {visiblePage === 'home' && state.status === 'ready' && (
-          <Home name={state.profile.firstName} />
-        )}
+        {(visiblePage === 'home' || visiblePage === 'profile/saved-posts') &&
+          state.status === 'ready' && (
+            <Suspense
+              fallback={
+                <section className="account-section" role="status">
+                  Loading posts…
+                </section>
+              }
+            >
+              {visiblePage === 'home' ? (
+                <Home
+                  key={state.profile.id}
+                  account={{ ...state, onUnauthorized: expireSession }}
+                />
+              ) : (
+                <SavedPosts
+                  key={state.profile.id}
+                  account={{ ...state, onUnauthorized: expireSession }}
+                />
+              )}
+            </Suspense>
+          )}
         {visiblePage === 'events' && state.status === 'ready' && (
           <Suspense
             fallback={
