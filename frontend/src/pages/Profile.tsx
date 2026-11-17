@@ -1,8 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Bookmark, ChevronRight, Pencil } from 'lucide-react';
 import { ApiError, updateProfile, type Profile } from '../api/auth';
 import { PageLink } from '../components/PageLink';
 import { ProfileOrganization } from './ProfileOrganization';
+
+const MyActivity = lazy(() =>
+  import('../components/MyActivity').then(({ MyActivity }) => ({
+    default: MyActivity,
+  })),
+);
 
 const memberSince = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -250,8 +263,20 @@ export function ProfilePage({
             <Bookmark aria-hidden="true" /> Saved posts{' '}
             <ChevronRight aria-hidden="true" />
           </PageLink>
+          <Suspense
+            fallback={
+              <p className="profile-empty" role="status">
+                Loading activity…
+              </p>
+            }
+          >
+            <MyActivity account={{ profile, accessToken, onUnauthorized }} />
+          </Suspense>
         </div>
-        <section className="profile-card" aria-labelledby="profile-account">
+        <section
+          className="profile-card profile-account-details"
+          aria-labelledby="profile-account"
+        >
           <h2 id="profile-account">Account details</h2>
           <dl>
             <dt>Email</dt>
