@@ -2,7 +2,13 @@ import { createContext } from 'react';
 
 type OrganizationPage = `organizations/${string}`;
 export type Page =
-  'landing' | 'login' | 'signup' | 'home' | 'profile' | OrganizationPage;
+  | 'landing'
+  | 'login'
+  | 'signup'
+  | 'home'
+  | 'events'
+  | 'profile'
+  | OrganizationPage;
 export const NavigationContext = createContext<(page: Page) => void>(() => {});
 
 export function isOrganizationPage(page: string): page is OrganizationPage {
@@ -12,7 +18,12 @@ export function isOrganizationPage(page: string): page is OrganizationPage {
 }
 
 export function isAccountPage(page: Page) {
-  return page === 'home' || page === 'profile' || isOrganizationPage(page);
+  return (
+    page === 'home' ||
+    page === 'events' ||
+    page === 'profile' ||
+    isOrganizationPage(page)
+  );
 }
 
 export function getPage(): Page {
@@ -20,6 +31,7 @@ export function getPage(): Page {
   if (path === '/login') return 'login';
   if (path === '/signup') return 'signup';
   if (path === '/home') return 'home';
+  if (path === '/events') return 'events';
   if (path === '/profile') return 'profile';
   const route = path.slice(1);
   if (isOrganizationPage(route)) return route;

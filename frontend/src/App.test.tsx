@@ -923,6 +923,223 @@ describe('backend account integration', () => {
   });
 });
 
+describe('my events', () => {
+  const listPath = '/api/users/me/registrations?page=0&size=100';
+  const first = {
+    id: 'registration-one',
+    eventId: 'event-one',
+    organizationId,
+    title: 'Grant Park Cleanup',
+    eventStart: new Date(2026, 10, 21, 21).toISOString(),
+    eventEnd: new Date(2026, 10, 21, 22).toISOString(),
+    location: 'Grant Park, Atlanta, GA',
+    registeredAt: '2026-11-01T18:00:00Z',
+  };
+  const later = {
+    ...first,
+    id: 'registration-two',
+    eventId: 'event-two',
+    title: 'Trail Maintenance Day',
+    eventStart: new Date(2026, 11, 5, 10).toISOString(),
+    eventEnd: new Date(2026, 11, 5, 12).toISOString(),
+  };
+  const past = {
+    ...first,
+    id: 'registration-three',
+    eventId: 'event-three',
+    title: 'Neighborhood Litter Walk',
+    eventStart: new Date(2026, 10, 8, 10).toISOString(),
+    eventEnd: new Date(2026, 10, 8, 12).toISOString(),
+  };
+  const cancelPath = `/api/opportunities/${first.eventId}/registrations/me`;
+  const published = {
+    id: first.eventId,
+    organizationId,
+    creatorId: id,
+    title: first.title,
+    description: 'Pick up litter along the walking paths. Gloves are provided.',
+    location: first.location,
+    eventStart: first.eventStart,
+    eventEnd: first.eventEnd,
+    createdAt: organization.createdAt,
+    imageUrl: null,
+    registrationType: 'INTERNAL',
+    registrationUrl: null,
+  };
+
+  beforeEach(() => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12));
+    restore();
+    window.history.replaceState(null, '', '/events');
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('sorts a paginated list and places each event on its local calendar date', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({ items: [later, past], page: 0, size: 100, hasNext: true }),
+      )
+      .mockResolvedValueOnce(
+        json({ items: [first], page: 1, size: 100, hasNext: false }),
+      );
+    render(<App />);
+    const upcoming = within(
+      await screen.findByRole('region', { name: 'Upcoming' }),
+    );
+    await upcoming.findByRole('button', { name: /Grant Park Cleanup/ });
+    expect(
+      upcoming.getAllByRole('button').map((button) => button.textContent),
+    ).toEqual([
+      expect.stringContaining('Grant Park Cleanup'),
+      expect.stringContaining('Trail Maintenance Day'),
+    ]);
+    expect(screen.getByRole('link', { name: 'Events' })).toHaveProperty(
+      'ariaCurrent',
+      'page',
+    );
+    const pastEvents = screen.getByText('Past events');
+    expect(pastEvents.closest('details')?.open).toBe(false);
+    await userEvent.click(pastEvents);
+    expect(pastEvents.closest('details')?.open).toBe(true);
+    await userEvent.click(
+      screen.getByRole('button', { name: /Neighborhood Litter Walk/ }),
+    );
+    const details = screen.getByRole('dialog', {
+      name: 'Neighborhood Litter Walk',
+    });
+    expect(
+      within(details).queryByRole('button', { name: 'Cancel registration' }),
+    ).toBeNull();
+    await userEvent.click(
+      within(details).getByRole('button', { name: 'Close event details' }),
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Calendar' }));
+    const november = screen.getByRole('table', { name: 'November 2026' });
+    const labels = [...november.querySelectorAll('tbody time')].map(
+      (time) => time.textContent,
+    );
+    expect(labels).toEqual(
+      Array.from({ length: 35 }, (_, index) =>
+        String(index < 30 ? index + 1 : index - 29),
+      ),
+    );
+    const cleanup = within(november).getByRole('button', {
+      name: 'Grant Park Cleanup',
+    });
+    expect(cleanup.closest('td')?.querySelector('time')?.dateTime).toBe(
+      '2026-11-21',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    const december = screen.getByRole('table', { name: 'December 2026' });
+    expect(
+      within(december).getByRole('button', { name: 'Trail Maintenance Day' }),
+    ).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      listPath,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+  });
+
+  it('cancels from the calendar details and removes the event across both views', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({ items: [first], page: 0, size: 100, hasNext: false }),
+      )
+      .mockResolvedValueOnce(
+        json({
+          ...emptyOpportunities,
+          items: [{ ...published, id: later.eventId }],
+          hasNext: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        json({
+          ...emptyOpportunities,
+          items: [published],
+          page: 1,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    render(<App />);
+    await screen.findByRole('button', { name: /Grant Park Cleanup/ });
+    await userEvent.click(screen.getByRole('radio', { name: 'Calendar' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Grant Park Cleanup' }),
+    );
+    const details = within(
+      screen.getByRole('dialog', { name: 'Grant Park Cleanup' }),
+    );
+    expect(details.getByText(first.location)).toBeTruthy();
+    expect(await details.findByText(published.description)).toBeTruthy();
+    expect(fetch).toHaveBeenLastCalledWith(
+      opportunityPath.replace('page=0', 'page=1'),
+      expect.anything(),
+    );
+    await userEvent.click(
+      details.getByRole('button', { name: 'Cancel registration' }),
+    );
+    await userEvent.click(
+      details.getByRole('button', { name: 'Keep registration' }),
+    );
+    expect(fetch).toHaveBeenCalledTimes(4);
+    await userEvent.click(
+      details.getByRole('button', { name: 'Cancel registration' }),
+    );
+    await userEvent.click(
+      details.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+    await screen.findByText('Registration canceled.');
+    expect(fetch).toHaveBeenLastCalledWith(
+      cancelPath,
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Grant Park Cleanup' }),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole('radio', { name: 'List' }));
+    expect(screen.getByText('No upcoming events yet.')).toBeTruthy();
+  });
+
+  it('rechecks registration status after an uncertain cancellation', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({ items: [first], page: 0, size: 100, hasNext: false }),
+      )
+      .mockResolvedValueOnce(json({ code: 'OPPORTUNITIES_UNAVAILABLE' }, 503))
+      .mockRejectedValueOnce(new Error('Connection lost'))
+      .mockResolvedValueOnce(
+        json({ eventId: first.eventId, registered: false, registration: null }),
+      );
+    render(<App />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Grant Park Cleanup/ }),
+    );
+    await screen.findByText('Description unavailable.');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Cancel registration' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+    await screen.findByText('Registration canceled.');
+    expect(fetch).toHaveBeenLastCalledWith(
+      cancelPath,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+});
+
 describe('profile page', () => {
   it('prefills the editor and cancels without saving the draft', async () => {
     restore();
@@ -1040,6 +1257,7 @@ describe('profile page', () => {
     );
     expect(nav.getAllByRole('link').map((link) => link.textContent)).toEqual([
       'Feed',
+      'Events',
       'Profile',
     ]);
     expect(
