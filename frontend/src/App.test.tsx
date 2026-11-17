@@ -375,6 +375,157 @@ describe('organization opportunities', () => {
     registeredAt: organization.createdAt,
   };
 
+  it('shows linked-organization events and opens details with the appropriate registration action on Home', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const external = {
+      ...opportunity,
+      id: 'external-event',
+      title: 'Native Planting Day',
+    };
+    const internal = {
+      ...internalOpportunity,
+      imageUrl: 'https://example.org/garden.jpg',
+    };
+    vi.mocked(fetch).mockImplementation(async (url, options) => {
+      if (url === '/api/users/me')
+        return json({ ...profile, organizationId, organizationRole: 'OWNER' });
+      if (url === feedPath) return json(emptyFeed);
+      if (url === opportunityPath)
+        return json({ ...emptyOpportunities, items: [internal, external] });
+      if (url === registrationPath) {
+        if (options?.method === 'POST')
+          return json(
+            { ...registration, eventId: internal.id, userId: id },
+            201,
+          );
+        return json({
+          eventId: internal.id,
+          registered: false,
+          registration: null,
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    render(<App />);
+    const column = within(
+      await screen.findByRole('region', { name: 'Upcoming opportunities' }),
+    );
+    const open = await column.findByRole('button', {
+      name: `Take a look at ${internal.title}`,
+    });
+    expect(
+      open.closest('article')?.querySelector('img')?.getAttribute('src'),
+    ).toBe(internal.imageUrl);
+    expect(open.closest('article')?.querySelector('time')?.dateTime).toBe(
+      internal.eventStart,
+    );
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => url === registrationPath),
+    ).toBe(false);
+    await userEvent.click(open);
+    const details = within(
+      screen.getByRole('dialog', { name: internal.title }),
+    );
+    expect(details.getByText(internal.description)).toBeTruthy();
+    await userEvent.click(
+      await details.findByRole('button', { name: 'Register' }),
+    );
+    await details.findByRole('button', { name: 'Cancel registration' });
+    await userEvent.click(
+      details.getByRole('button', { name: 'Close event details' }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(open));
+
+    await userEvent.click(
+      column.getByRole('button', { name: `Take a look at ${external.title}` }),
+    );
+    const externalDetails = within(
+      screen.getByRole('dialog', { name: external.title }),
+    );
+    expect(
+      externalDetails
+        .getByRole('link', { name: 'Register on example.org' })
+        .getAttribute('href'),
+    ).toBe(external.registrationUrl);
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([url]) =>
+          String(url).endsWith('/registrations/me'),
+        ),
+    ).toHaveLength(2);
+  });
+
+  it('fetches the newly published event when its organizer returns to Home', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    let published = false;
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/users/me')
+        return json({ ...profile, organizationId, organizationRole: 'OWNER' });
+      if (url === feedPath) return json(emptyFeed);
+      if (url === `/api${organizationPath}`) return json(organization);
+      if (url === opportunityPath)
+        return json({
+          ...emptyOpportunities,
+          items: published ? [internalOpportunity] : [],
+        });
+      if (url === '/api/organizations/me/opportunities') {
+        published = true;
+        return json(internalOpportunity, 201);
+      }
+      if (url === registrationPath)
+        return json({
+          eventId: opportunity.id,
+          registered: false,
+          registration: null,
+        });
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    render(<App />);
+    await screen.findByText('No upcoming opportunities yet.');
+    act(() => {
+      window.history.pushState(null, '', organizationPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Publish opportunity' }),
+    );
+    const dialog = within(
+      screen.getByRole('dialog', { name: 'Publish opportunity' }),
+    );
+    await userEvent.type(
+      dialog.getByLabelText('Title'),
+      internalOpportunity.title,
+    );
+    await userEvent.type(
+      dialog.getByLabelText('Description'),
+      internalOpportunity.description,
+    );
+    await userEvent.type(
+      dialog.getByLabelText('Location'),
+      internalOpportunity.location,
+    );
+    fireEvent.change(dialog.getByLabelText('Start date and time'), {
+      target: { value: start },
+    });
+    fireEvent.change(dialog.getByLabelText('End date and time'), {
+      target: { value: end },
+    });
+    await userEvent.click(
+      dialog.getByRole('button', { name: 'Publish opportunity' }),
+    );
+    await screen.findByText('Opportunity published.');
+    await userEvent.click(screen.getByRole('link', { name: 'Feed' }));
+    const column = within(
+      await screen.findByRole('region', { name: 'Upcoming opportunities' }),
+    );
+    expect(
+      await column.findByRole('heading', { name: internalOpportunity.title }),
+    ).toBeTruthy();
+  });
+
   it.each([false, true])(
     'registers, restores the RSVP, and cancels for an account with owner access %s',
     async (owner) => {
@@ -841,26 +992,23 @@ describe('backend account integration', () => {
     );
   });
 
-  it('shows the live feed empty state and the existing opportunity previews', async () => {
+  it('shows empty states for a new account without posts or an organization', async () => {
     restore();
     window.history.replaceState(null, '', '/home');
     render(<App />);
     const feed = await screen.findByRole('region', { name: 'Your community' });
     const events = screen.getByRole('region', {
-      name: 'Opportunities near you',
+      name: 'Upcoming opportunities',
     });
     expect(await within(feed).findByText(/No posts yet/)).toBeTruthy();
-    expect(within(events).getAllByRole('article')).toHaveLength(3);
-    await userEvent.click(
-      within(events).getAllByRole('button', { name: 'Take a look' })[0],
-    );
-    expect(screen.getByRole('dialog').textContent).toContain(
-      'Event registration is not available',
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Close preview' }),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      within(events).getByText('No upcoming opportunities yet.'),
+    ).toBeTruthy();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(([url]) => String(url).includes('/opportunities')),
+    ).toBe(false);
   });
   it('hides content while profile verification is pending and ignores a late profile after logout', async () => {
     restore();

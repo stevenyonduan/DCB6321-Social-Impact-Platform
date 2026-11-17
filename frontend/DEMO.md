@@ -1,4 +1,4 @@
-# SOW frontend: authentication and content previews
+# SOW frontend demo
 
 Use Node 24. From `frontend/`, run `npm ci`, then `npm run dev` and open
 <http://127.0.0.1:5173>. Local images, fonts, and icons remain bundled.
@@ -43,14 +43,14 @@ will not simulate success. Automated tests use mocks and need no environment fil
 
 ## Content boundary and verification
 
-Posts, organizations, categories, schedules, and opportunities remain sample fixtures in
-`src/demo/content.ts`. Likes/saves are temporary UI state; posting, commenting, and event
-registration remain previews. No feed, RSVP, role management, or profile-edit API is added.
-The legacy `sow-demo-session` value no longer grants access to the homepage.
+Home loads real community posts and upcoming opportunities for your linked organization. A new
+account without an organization sees an empty opportunities column. Create an organization, publish
+an upcoming opportunity from its page, and return to Home to see it. **Take a look** opens the
+event details with an in-app RSVP for internal events or a registration link for external events.
 
 Run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, and
 `npm run build`. Tests cover API contracts, session restoration, protected navigation,
-safe failures, stale responses, refresh events, logout, and content previews. Live local verification is recorded below.
+safe failures, stale responses, refresh events, and logout. Historical account verification is recorded below.
 
 ## Verification — November 5, 2026
 
