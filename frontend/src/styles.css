@@ -626,17 +626,23 @@ input::placeholder {
   flex-wrap: wrap;
   gap: 12px;
 }
-.create-organization-dialog fieldset {
+.organization-header-actions {
+  align-items: flex-start;
+}
+.organization-admin-success {
+  margin-block-start: 8px;
+}
+.organization-form-dialog fieldset {
   min-width: 0;
   padding: 0;
   margin: 0;
   border: 0;
 }
-.create-organization-dialog textarea {
+.organization-form-dialog textarea {
   font-family: inherit;
   resize: vertical;
 }
-.create-organization-dialog .organization-form-actions {
+.organization-form-dialog .organization-form-actions {
   justify-content: flex-end;
 }
 .dialog-cancel {

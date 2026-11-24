@@ -73,6 +73,27 @@ export function canEditOrganization(profile: Profile, organizationId: string) {
   );
 }
 
+export function addOrganizationAdmin(
+  email: string,
+  accessToken: string,
+  signal: AbortSignal,
+) {
+  return request(
+    '/organizations/me/admins',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    },
+    (value): value is undefined => value === undefined,
+    signal,
+  );
+}
+
 export function organizationRequest(
   id: string,
   accessToken: string,

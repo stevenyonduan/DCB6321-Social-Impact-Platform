@@ -347,6 +347,140 @@ describe('organization profile', () => {
   });
 });
 
+describe('adding an organization admin', () => {
+  const adminsPath = '/api/organizations/me/admins';
+  const address = 'Mike@Example.test';
+
+  function openOrganization(
+    association: {
+      organizationId: string | null;
+      organizationRole: 'OWNER' | 'ADMIN' | null;
+    } = { organizationId, organizationRole: 'OWNER' },
+  ) {
+    restore();
+    window.history.replaceState(null, '', organizationPath);
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/users/me') return json({ ...profile, ...association });
+      if (url === `/api${organizationPath}`) return json(organization);
+      if (url === opportunityPath) return json(emptyOpportunities);
+      throw new Error('Unexpected request');
+    });
+    render(<App />);
+  }
+
+  async function openDialog() {
+    const trigger = await screen.findByRole('button', { name: 'Add admin' });
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Add admin' });
+    const email = within(dialog).getByRole('textbox', {
+      name: 'Email address',
+    });
+    expect(document.activeElement).toBe(email);
+    return { dialog, email, trigger };
+  }
+
+  it.each([
+    { organizationId, organizationRole: 'ADMIN' as const },
+    { organizationId: id, organizationRole: 'OWNER' as const },
+    { organizationId: null, organizationRole: null },
+  ])(
+    'hides the action for $organizationRole on $organizationId',
+    async (association) => {
+      openOrganization(association);
+      await screen.findByRole('heading', { name: organization.name });
+      expect(screen.queryByRole('button', { name: 'Add admin' })).toBeNull();
+    },
+  );
+
+  it('submits one exact email, prevents duplicate requests, and handles 204', async () => {
+    openOrganization();
+    const { dialog, email, trigger } = await openDialog();
+    let complete!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => {
+      complete = resolve;
+    });
+    vi.mocked(fetch).mockReturnValue(response);
+    await userEvent.type(email, address);
+    const form = email.closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => url === adminsPath),
+    ).toHaveLength(1);
+    expect(fetch).toHaveBeenLastCalledWith(
+      adminsPath,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: address }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    expect(
+      (
+        within(dialog).getByRole('button', {
+          name: 'Cancel',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    complete(new Response(null, { status: 204 }));
+    await screen.findByText('Admin added.');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('rejects multiple addresses and cancels without submitting', async () => {
+    openOrganization();
+    const { dialog, email, trigger } = await openDialog();
+    await userEvent.type(email, `${address}, other@example.test`);
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Add admin' }),
+    );
+    expect(within(dialog).getByRole('alert').textContent).toContain(
+      'Enter one email address',
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(fetch).not.toHaveBeenCalledWith(adminsPath, expect.anything());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('keeps the email editable on a generic membership conflict', async () => {
+    openOrganization();
+    const { dialog, email } = await openDialog();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ code: 'MEMBERSHIP_CONFLICT' }, 409),
+    );
+    await userEvent.type(email, address);
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Add admin' }),
+    );
+    expect((await within(dialog).findByRole('alert')).textContent).toBe(
+      'This account couldn’t be added. Check the email and try again.',
+    );
+    expect((email as HTMLInputElement).value).toBe(address);
+  });
+
+  it('hides the action when the server denies ownership', async () => {
+    openOrganization();
+    const { dialog, email } = await openDialog();
+    vi.mocked(fetch).mockResolvedValueOnce(json({ code: 'FORBIDDEN' }, 403));
+    await userEvent.type(email, address);
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Add admin' }),
+    );
+    await screen.findByText(
+      'You do not have permission to add organization admins.',
+    );
+    expect(screen.queryByRole('button', { name: 'Add admin' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
 describe('organization opportunities', () => {
   const start = '2099-01-15T10:00';
   const end = '2099-01-15T12:00';
