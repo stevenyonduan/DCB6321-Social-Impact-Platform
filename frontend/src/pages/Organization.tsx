@@ -6,6 +6,7 @@ import {
   organizationRequest,
   type OrganizationProfile,
 } from '../api/organizations';
+import { AddOrganizationAdmin } from './AddOrganizationAdmin';
 import { OrganizationOpportunities } from './OrganizationOpportunities';
 
 const monthAndYear = new Intl.DateTimeFormat('en-US', {
@@ -112,6 +113,8 @@ export function OrganizationPage({
 
   const profile = organization;
   const canEdit = canEditOrganization(account, id) && !denied;
+  const canAddAdmin =
+    account.organizationId === id && account.organizationRole === 'OWNER';
   const website = websiteUrl(profile.website);
 
   function closeEditor() {
@@ -201,24 +204,35 @@ export function OrganizationPage({
               </p>
             )}
           </div>
-          {canEdit && !draft && (
-            <button
-              ref={editButton}
-              className="button primary"
-              onClick={() => {
-                setSaved(false);
-                setDraft({
-                  name: profile.name,
-                  description: profile.description ?? '',
-                  website: profile.website ?? '',
-                });
-                requestAnimationFrame(() =>
-                  document.getElementById('organization-name')?.focus(),
-                );
-              }}
-            >
-              <Pencil aria-hidden="true" /> Edit profile
-            </button>
+          {(canAddAdmin || (canEdit && !draft)) && (
+            <div className="organization-form-actions organization-header-actions">
+              {canEdit && !draft && (
+                <button
+                  ref={editButton}
+                  className="button primary"
+                  onClick={() => {
+                    setSaved(false);
+                    setDraft({
+                      name: profile.name,
+                      description: profile.description ?? '',
+                      website: profile.website ?? '',
+                    });
+                    requestAnimationFrame(() =>
+                      document.getElementById('organization-name')?.focus(),
+                    );
+                  }}
+                >
+                  <Pencil aria-hidden="true" /> Edit profile
+                </button>
+              )}
+              {canAddAdmin && (
+                <AddOrganizationAdmin
+                  key={account.id}
+                  accessToken={accessToken}
+                  onUnauthorized={onUnauthorized}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>

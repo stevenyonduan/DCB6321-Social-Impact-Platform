@@ -165,7 +165,7 @@ function CreateOrganizationDialog({
   return (
     <dialog
       ref={dialog}
-      className="preview-dialog create-organization-dialog"
+      className="preview-dialog organization-form-dialog"
       aria-labelledby="create-organization-title"
       onCancel={(event) => {
         event.preventDefault();
