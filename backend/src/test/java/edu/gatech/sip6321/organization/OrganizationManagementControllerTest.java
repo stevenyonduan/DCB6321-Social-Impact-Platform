@@ -185,18 +185,33 @@ class OrganizationManagementControllerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"OWNER", "ADMIN"})
-    void managersListOnlyOwnTeamWithoutEmail(String role) throws Exception {
+    void managersListOwnTeamWithAdminDetailsVisibleOnlyToOwner(String role) throws Exception {
         when(actor.getOrganizationRole()).thenReturn(OrganizationRole.valueOf(role));
         when(target.getOrganizationRole()).thenReturn(OrganizationRole.ADMIN);
         when(target.getFirstName()).thenReturn("Mike");
         when(target.getLastName()).thenReturn("Volunteer");
-        when(users.findByOrganizationIdOrderById(org)).thenReturn(List.of(target));
-        mvc.perform(get(TEAM).header("Authorization", "Bearer access"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(targetId.toString()))
-                .andExpect(jsonPath("$[0].firstName").value("Mike"))
-                .andExpect(jsonPath("$[0].organizationRole").value("ADMIN"))
-                .andExpect(jsonPath("$[0].email").doesNotExist());
+        when(target.getEmail()).thenReturn("mike@example.test");
+        when(target.getAvatarUrl()).thenReturn("https://example.test/mike.png");
+        var owner = mock(User.class);
+        when(owner.getOrganizationRole()).thenReturn(OrganizationRole.OWNER);
+        when(owner.getEmail()).thenReturn("owner@example.test");
+        when(owner.getAvatarUrl()).thenReturn("https://example.test/owner.png");
+        when(users.findByOrganizationIdOrderById(org)).thenReturn(List.of(target, owner));
+        var result =
+                mvc.perform(get(TEAM).header("Authorization", "Bearer access"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$[0].id").value(targetId.toString()))
+                        .andExpect(jsonPath("$[0].firstName").value("Mike"))
+                        .andExpect(jsonPath("$[0].organizationRole").value("ADMIN"))
+                        .andExpect(jsonPath("$[1].email").doesNotHaveJsonPath())
+                        .andExpect(jsonPath("$[1].avatarUrl").doesNotHaveJsonPath());
+        if (role.equals("OWNER")) {
+            result.andExpect(jsonPath("$[0].email").value("mike@example.test"))
+                    .andExpect(jsonPath("$[0].avatarUrl").value("https://example.test/mike.png"));
+        } else {
+            result.andExpect(jsonPath("$[0].email").doesNotHaveJsonPath())
+                    .andExpect(jsonPath("$[0].avatarUrl").doesNotHaveJsonPath());
+        }
         verify(users).findByOrganizationIdOrderById(org);
     }
 

@@ -28,10 +28,11 @@ A shared service helper reuses ProfileService/Supabase verification. Conditional
 prevent concurrent account assignment; membership and audit writes commit together. Subsequent
 requests use fresh persisted permissions after removal. Strict DTOs reject supplied owner/role/
 organization/verification identities. OWNER-only email lookup uses identical unavailable-target
-conflicts and a bounded 10-attempt/60-second per-instance throttle. Management lists omit emails.
+conflicts and a bounded 10-attempt/60-second per-instance throttle. Only an OWNER can see email and
+avatar details for ADMINs in their own organization’s management list.
 The backend-only audit table has RLS and no browser grants. See the guide for residual eligibility
 inference, replica/restart throttle limits, required notification and incorrect-addition recovery.
-No general user directory, Auth-user creation, external messaging, or frontend management UI is added.
+No general user directory, Auth-user creation, or external messaging is added.
 
 ## Approved signup decision
 

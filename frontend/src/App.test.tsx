@@ -347,34 +347,51 @@ describe('organization profile', () => {
   });
 });
 
-describe('adding an organization admin', () => {
+describe('editing organization admins', () => {
   const adminsPath = '/api/organizations/me/admins';
   const address = 'Mike@Example.test';
+  const owner = {
+    id,
+    firstName: 'Sam',
+    lastName: 'Example',
+    organizationRole: 'OWNER',
+  };
+  const admin = {
+    id: '3a5b0fd2-7d4a-4bd9-8d71-dca84dd08792',
+    firstName: 'Mike',
+    lastName: 'Example',
+    organizationRole: 'ADMIN',
+  };
 
-  function openOrganization(
-    association: {
+  function openOrganization({
+    association = { organizationId, organizationRole: 'OWNER' },
+    loadTeam = () => json([owner, admin]),
+  }: {
+    association?: {
       organizationId: string | null;
       organizationRole: 'OWNER' | 'ADMIN' | null;
-    } = { organizationId, organizationRole: 'OWNER' },
-  ) {
+    };
+    loadTeam?: () => Response | Promise<Response>;
+  } = {}) {
     restore();
     window.history.replaceState(null, '', organizationPath);
-    vi.mocked(fetch).mockImplementation(async (url) => {
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
       if (url === '/api/users/me') return json({ ...profile, ...association });
       if (url === `/api${organizationPath}`) return json(organization);
       if (url === opportunityPath) return json(emptyOpportunities);
+      if (url === adminsPath && !init?.method) return loadTeam();
       throw new Error('Unexpected request');
     });
     render(<App />);
   }
 
   async function openDialog() {
-    const trigger = await screen.findByRole('button', { name: 'Add admin' });
+    const trigger = await screen.findByRole('button', { name: 'Edit admins' });
     await userEvent.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: 'Add admin' });
-    const email = within(dialog).getByRole('textbox', {
+    const dialog = within(screen.getByRole('dialog', { name: 'Edit admins' }));
+    const email = dialog.getByRole('textbox', {
       name: 'Email address',
-    });
+    }) as HTMLInputElement;
     expect(document.activeElement).toBe(email);
     return { dialog, email, trigger };
   }
@@ -384,28 +401,97 @@ describe('adding an organization admin', () => {
     { organizationId: id, organizationRole: 'OWNER' as const },
     { organizationId: null, organizationRole: null },
   ])(
-    'hides the action for $organizationRole on $organizationId',
+    'hides the editor for $organizationRole on $organizationId',
     async (association) => {
-      openOrganization(association);
+      openOrganization({ association });
       await screen.findByRole('heading', { name: organization.name });
-      expect(screen.queryByRole('button', { name: 'Add admin' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Edit admins' })).toBeNull();
+      expect(fetch).not.toHaveBeenCalledWith(adminsPath, expect.anything());
     },
   );
 
-  it('submits one exact email, prevents duplicate requests, and handles 204', async () => {
-    openOrganization();
+  it('shows loading, retries a list error, and treats an owner-only list as empty', async () => {
+    let complete!: (response: Response) => void;
+    const firstLoad = new Promise<Response>((resolve) => {
+      complete = resolve;
+    });
+    const loadTeam = vi.fn((): Response | Promise<Response> => json([owner]));
+    loadTeam.mockReturnValueOnce(firstLoad);
+    openOrganization({ loadTeam });
+    const { dialog, trigger } = await openDialog();
+    expect(dialog.getByText('Loading admins…')).toBeTruthy();
+    complete(json({ code: 'ORGANIZATION_UNAVAILABLE' }, 503));
+    await userEvent.click(
+      await dialog.findByRole('button', { name: 'Try again' }),
+    );
+    await dialog.findByText('No admins yet.');
+    expect(dialog.queryByText('Sam Example')).toBeNull();
+    expect(
+      dialog.queryByRole('button', { name: 'Remove Sam Example' }),
+    ).toBeNull();
+    expect(fetch).toHaveBeenCalledWith(
+      adminsPath,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    fireEvent(
+      screen.getByRole('dialog'),
+      new Event('cancel', { cancelable: true }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('shows admin emails and profile photos with a fallback for missing or broken photos', async () => {
+    const avatarUrl = 'https://example.test/mike.png';
+    openOrganization({
+      loadTeam: () =>
+        json([
+          owner,
+          { ...admin, email: address, avatarUrl },
+          {
+            ...admin,
+            id: 'a3a824ed-5f24-46f8-8bdb-4c3b138fc0db',
+            firstName: 'Alex',
+            email: 'alex@example.test',
+          },
+        ]),
+    });
+    const { dialog } = await openDialog();
+    const mike = (await dialog.findByText(address)).closest('li')!;
+    const alex = dialog.getByText('alex@example.test').closest('li')!;
+    const photo = mike.querySelector('img')!;
+    expect(photo.getAttribute('src')).toBe(avatarUrl);
+    expect(alex.querySelector('.organization-admin-avatar svg')).toBeTruthy();
+    fireEvent.error(photo);
+    expect(mike.querySelector('img')).toBeNull();
+    expect(mike.querySelector('.organization-admin-avatar svg')).toBeTruthy();
+  });
+
+  it('submits one exact email, prevents duplicate requests, and refreshes after 204', async () => {
+    const loadTeam = vi.fn(() => json([owner, admin]));
+    loadTeam.mockReturnValueOnce(json([owner]));
+    openOrganization({ loadTeam });
     const { dialog, email, trigger } = await openDialog();
+    await dialog.findByText('No admins yet.');
     let complete!: (response: Response) => void;
     const response = new Promise<Response>((resolve) => {
       complete = resolve;
     });
-    vi.mocked(fetch).mockReturnValue(response);
+    vi.mocked(fetch).mockReturnValueOnce(response);
     await userEvent.type(email, address);
     const form = email.closest('form')!;
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(
-      vi.mocked(fetch).mock.calls.filter(([url]) => url === adminsPath),
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([url, init]) => url === adminsPath && init?.method === 'POST',
+        ),
     ).toHaveLength(1);
     expect(fetch).toHaveBeenLastCalledWith(
       adminsPath,
@@ -418,65 +504,147 @@ describe('adding an organization admin', () => {
       }),
     );
     expect(
-      (
-        within(dialog).getByRole('button', {
-          name: 'Cancel',
-        }) as HTMLButtonElement
-      ).disabled,
+      (dialog.getByRole('button', { name: 'Done' }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
 
     complete(new Response(null, { status: 204 }));
-    await screen.findByText('Admin added.');
+    await dialog.findByText('Admin added.');
+    await dialog.findByRole('button', { name: 'Remove Mike Example' });
+    expect(email.value).toBe('');
+    expect(loadTeam).toHaveBeenCalledTimes(2);
+    await userEvent.click(dialog.getByRole('button', { name: 'Done' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it('rejects multiple addresses and cancels without submitting', async () => {
+  it('rejects multiple addresses without submitting', async () => {
     openOrganization();
-    const { dialog, email, trigger } = await openDialog();
+    const { dialog, email } = await openDialog();
+    await dialog.findByText('Mike Example');
     await userEvent.type(email, `${address}, other@example.test`);
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Add admin' }),
-    );
-    expect(within(dialog).getByRole('alert').textContent).toContain(
+    await userEvent.click(dialog.getByRole('button', { name: 'Add admin' }));
+    expect(dialog.getByRole('alert').textContent).toContain(
       'Enter one email address',
     );
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Cancel' }),
+    expect(fetch).not.toHaveBeenCalledWith(
+      adminsPath,
+      expect.objectContaining({ method: 'POST' }),
     );
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(fetch).not.toHaveBeenCalledWith(adminsPath, expect.anything());
-    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it('keeps the email editable on a generic membership conflict', async () => {
     openOrganization();
     const { dialog, email } = await openDialog();
+    await dialog.findByText('Mike Example');
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ code: 'MEMBERSHIP_CONFLICT' }, 409),
     );
     await userEvent.type(email, address);
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Add admin' }),
-    );
-    expect((await within(dialog).findByRole('alert')).textContent).toBe(
+    await userEvent.click(dialog.getByRole('button', { name: 'Add admin' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe(
       'This account couldn’t be added. Check the email and try again.',
     );
-    expect((email as HTMLInputElement).value).toBe(address);
+    expect(email.value).toBe(address);
+    expect(dialog.queryByText('Admin added.')).toBeNull();
   });
 
-  it('hides the action when the server denies ownership', async () => {
+  it('confirms removal by ID, supports cancellation, and refreshes after removal', async () => {
+    const loadTeam = vi.fn(() => json([owner]));
+    loadTeam.mockReturnValueOnce(json([owner, admin]));
+    openOrganization({ loadTeam });
+    const { dialog } = await openDialog();
+    const remove = await dialog.findByRole('button', {
+      name: 'Remove Mike Example',
+    });
+    await userEvent.click(remove);
+    await dialog.findByText(
+      'Remove Mike Example? Their admin access ends immediately.',
+    );
+    const cancel = dialog.getByRole('button', { name: 'Cancel' });
+    expect(document.activeElement).toBe(cancel);
+    await userEvent.click(cancel);
+    await waitFor(() => expect(document.activeElement).toBe(remove));
+    expect(fetch).not.toHaveBeenCalledWith(
+      `${adminsPath}/${admin.id}`,
+      expect.anything(),
+    );
+
+    await userEvent.click(remove);
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Remove admin' }));
+    await dialog.findByText('Admin removed.');
+    await dialog.findByText('No admins yet.');
+    expect(fetch).toHaveBeenCalledWith(
+      `${adminsPath}/${admin.id}`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    expect(loadTeam).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [404, 'ADMIN_NOT_FOUND', 'This admin is no longer available.'],
+    [
+      503,
+      'ORGANIZATION_UNAVAILABLE',
+      'The removal couldn’t be confirmed. Check the list before trying again.',
+    ],
+  ])(
+    'reconciles the roster after removal returns %s without retrying the write',
+    async (status, code, message) => {
+      const loadTeam = vi.fn(() => json([owner]));
+      loadTeam.mockReturnValueOnce(json([owner, admin]));
+      openOrganization({ loadTeam });
+      const { dialog } = await openDialog();
+      await userEvent.click(
+        await dialog.findByRole('button', { name: 'Remove Mike Example' }),
+      );
+      vi.mocked(fetch).mockResolvedValueOnce(json({ code }, status));
+      await userEvent.click(
+        dialog.getByRole('button', { name: 'Remove admin' }),
+      );
+      await dialog.findByText(message);
+      await dialog.findByText('No admins yet.');
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+      ).toHaveLength(1);
+      expect(dialog.queryByText('Admin removed.')).toBeNull();
+    },
+  );
+
+  it('keeps confirmed mutation feedback if reloading the list fails', async () => {
+    const loadTeam = vi.fn(() =>
+      json({ code: 'ORGANIZATION_UNAVAILABLE' }, 503),
+    );
+    loadTeam.mockReturnValueOnce(json([owner]));
+    openOrganization({ loadTeam });
+    const { dialog, email } = await openDialog();
+    await dialog.findByText('No admins yet.');
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await userEvent.type(email, address);
+    await userEvent.click(dialog.getByRole('button', { name: 'Add admin' }));
+    await dialog.findByText('The admin list couldn’t be loaded.');
+    expect(dialog.getByText('Admin added.')).toBeTruthy();
+  });
+
+  it('hides the editor when the server denies mutation', async () => {
     openOrganization();
     const { dialog, email } = await openDialog();
+    await dialog.findByText('Mike Example');
     vi.mocked(fetch).mockResolvedValueOnce(json({ code: 'FORBIDDEN' }, 403));
     await userEvent.type(email, address);
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Add admin' }),
-    );
+    await userEvent.click(dialog.getByRole('button', { name: 'Add admin' }));
     await screen.findByText(
-      'You do not have permission to add organization admins.',
+      'You do not have permission to edit organization admins.',
     );
-    expect(screen.queryByRole('button', { name: 'Add admin' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit admins' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

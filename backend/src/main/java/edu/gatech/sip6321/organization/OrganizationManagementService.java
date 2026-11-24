@@ -65,8 +65,9 @@ public class OrganizationManagementService {
     public List<ManagementMember> admins(List<String> headers) {
         var actor = authorization.manager(headers);
         requireOrganization(actor.organizationId());
+        boolean ownerView = actor.organizationRole() == OrganizationRole.OWNER;
         return users.findByOrganizationIdOrderById(actor.organizationId()).stream()
-                .map(ManagementMember::of)
+                .map(member -> ManagementMember.of(member, ownerView))
                 .toList();
     }
 

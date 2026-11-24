@@ -527,7 +527,8 @@ input::placeholder {
   font-size: clamp(22px, 4vw, 38px);
   overflow: hidden;
 }
-.profile-avatar img {
+.profile-avatar img,
+.organization-admin-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -628,9 +629,6 @@ input::placeholder {
 }
 .organization-header-actions {
   align-items: flex-start;
-}
-.organization-admin-success {
-  margin-block-start: 8px;
 }
 .organization-form-dialog fieldset {
   min-width: 0;
@@ -982,6 +980,84 @@ input::placeholder {
 }
 .dialog-note {
   color: var(--muted);
+}
+.edit-admins-dialog h3,
+.edit-admins-dialog legend {
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.edit-admins-dialog > section {
+  margin-block: 18px;
+}
+.edit-admins-dialog form,
+.edit-admins-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.edit-admins-dialog form .dialog-note {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.edit-admins-footer {
+  margin-top: 16px;
+}
+.organization-admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.organization-admin-list li + li {
+  border-top: 1px solid var(--border);
+}
+.organization-admin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 6px;
+  overflow-wrap: anywhere;
+}
+.avatar.organization-admin-avatar {
+  background: #e2ecd9;
+  color: var(--green);
+  overflow: hidden;
+}
+.organization-admin-identity {
+  flex: 1;
+  min-width: 0;
+}
+.organization-admin-email {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.button.organization-admin-remove {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid #e9bfc1;
+  border-radius: 50%;
+  background: #fff3f3;
+  color: #a82020;
+}
+.organization-admin-remove:hover:not(:disabled) {
+  background: #fbe2e3;
+}
+.organization-admin-confirm {
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+}
+.organization-admin-confirm p {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.edit-admins-dialog .organization-admin-success {
+  color: var(--green);
 }
 .opportunity-heading {
   display: flex;

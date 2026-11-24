@@ -9,6 +9,7 @@ import {
 import { Bookmark, ChevronRight, Pencil } from 'lucide-react';
 import { ApiError, updateProfile, type Profile } from '../api/auth';
 import { PageLink } from '../components/PageLink';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 import { ProfileOrganization } from './ProfileOrganization';
 
 const MyActivity = lazy(() =>
@@ -22,35 +23,6 @@ const memberSince = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
   timeZone: 'UTC',
 });
-
-function avatarSource(value: string | null) {
-  if (!value?.trim()) return undefined;
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.protocol === 'https:' || url.protocol === 'http:') return url.href;
-  } catch {
-    return undefined;
-  }
-}
-
-function ProfileAvatar({ src, initials }: { src?: string; initials: string }) {
-  const [failed, setFailed] = useState(false);
-
-  return (
-    <div className="avatar profile-avatar" aria-hidden="true">
-      {src && !failed ? (
-        <img
-          src={src}
-          alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        initials
-      )}
-    </div>
-  );
-}
 
 export function ProfilePage({
   profile,
@@ -90,8 +62,6 @@ export function ProfilePage({
     .map((name) => Array.from(name)[0])
     .join('')
     .toUpperCase();
-  const src = avatarSource(profile.avatarUrl);
-
   function closeEditor() {
     setDraft(undefined);
     setSaveError('');
@@ -164,7 +134,11 @@ export function ProfilePage({
       <div className="home-welcome">
         <div className="content-width profile-intro personal-profile-intro">
           <div className="profile-identity">
-            <ProfileAvatar key={src} src={src} initials={initials} />
+            <ProfileAvatar
+              avatarUrl={profile.avatarUrl}
+              className="profile-avatar"
+              fallback={initials}
+            />
             <h1>{names.join(' ')}</h1>
           </div>
           {!draft && (
