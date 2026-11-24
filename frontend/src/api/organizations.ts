@@ -94,6 +94,63 @@ export function addOrganizationAdmin(
   );
 }
 
+export type OrganizationTeamMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  organizationRole: 'OWNER' | 'ADMIN';
+  email?: string;
+  avatarUrl?: string;
+};
+
+function isTeamMember(value: unknown): value is OrganizationTeamMember {
+  return (
+    object(value) &&
+    typeof value.id === 'string' &&
+    /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(value.id) &&
+    typeof value.firstName === 'string' &&
+    typeof value.lastName === 'string' &&
+    (value.organizationRole === 'OWNER' ||
+      value.organizationRole === 'ADMIN') &&
+    (value.email === undefined || typeof value.email === 'string') &&
+    (value.avatarUrl === undefined || typeof value.avatarUrl === 'string')
+  );
+}
+
+export function loadOrganizationTeam(accessToken: string, signal: AbortSignal) {
+  return request(
+    '/organizations/me/admins',
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    },
+    (value): value is OrganizationTeamMember[] =>
+      Array.isArray(value) && value.every(isTeamMember),
+    signal,
+  );
+}
+
+export function removeOrganizationAdmin(
+  userId: string,
+  accessToken: string,
+  signal: AbortSignal,
+) {
+  return request(
+    `/organizations/me/admins/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    },
+    (value): value is undefined => value === undefined,
+    signal,
+  );
+}
+
 export function organizationRequest(
   id: string,
   accessToken: string,

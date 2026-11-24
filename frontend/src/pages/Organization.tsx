@@ -6,7 +6,7 @@ import {
   organizationRequest,
   type OrganizationProfile,
 } from '../api/organizations';
-import { AddOrganizationAdmin } from './AddOrganizationAdmin';
+import { EditOrganizationAdmins } from './EditOrganizationAdmins';
 import { OrganizationOpportunities } from './OrganizationOpportunities';
 
 const monthAndYear = new Intl.DateTimeFormat('en-US', {
@@ -113,7 +113,7 @@ export function OrganizationPage({
 
   const profile = organization;
   const canEdit = canEditOrganization(account, id) && !denied;
-  const canAddAdmin =
+  const canEditAdmins =
     account.organizationId === id && account.organizationRole === 'OWNER';
   const website = websiteUrl(profile.website);
 
@@ -204,7 +204,7 @@ export function OrganizationPage({
               </p>
             )}
           </div>
-          {(canAddAdmin || (canEdit && !draft)) && (
+          {(canEditAdmins || (canEdit && !draft)) && (
             <div className="organization-form-actions organization-header-actions">
               {canEdit && !draft && (
                 <button
@@ -225,8 +225,8 @@ export function OrganizationPage({
                   <Pencil aria-hidden="true" /> Edit profile
                 </button>
               )}
-              {canAddAdmin && (
-                <AddOrganizationAdmin
+              {canEditAdmins && (
+                <EditOrganizationAdmins
                   key={account.id}
                   accessToken={accessToken}
                   onUnauthorized={onUnauthorized}

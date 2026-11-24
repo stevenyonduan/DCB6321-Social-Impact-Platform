@@ -109,8 +109,10 @@ Content-Type: application/json
 [{"id":"SARAH_UUID","firstName":"Sarah","lastName":"Volunteer","organizationRole":"OWNER"},{"id":"MIKE_UUID","firstName":"Mike","lastName":"Volunteer","organizationRole":"ADMIN"}]
 ```
 
-Both roles may view the associated organization only. Includes OWNER and ADMINs, ordered by UUID;
-email, global role, bio, avatar, Auth/session data are excluded. This MVP list is not paginated.
+Both roles may view the associated organization only. Includes OWNER and ADMINs, ordered by UUID.
+For an OWNER caller, ADMIN rows also include `email` and include `avatarUrl` when set, for the Edit
+admins dialog. Those fields are omitted for ADMIN callers and on the OWNER row. The response excludes
+global roles, bios, and Auth/session data. This MVP list is not paginated.
 
 ### Remove an ADMIN
 
