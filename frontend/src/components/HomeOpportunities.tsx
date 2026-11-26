@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Clock, MapPin } from 'lucide-react';
 import { ApiError } from '../api/auth';
+import { canEditOrganization } from '../api/organizations';
 import {
   listOpportunities,
   opportunityWebUrl,
@@ -170,6 +171,12 @@ function OrganizationEvents({
         <EventDetailsDialog
           event={selected}
           description={selected.description}
+          attendees={
+            selected.registrationType === 'INTERNAL' &&
+            canEditOrganization(account.profile, selected.organizationId)
+              ? { eventId: selected.id, accessToken, onUnauthorized }
+              : undefined
+          }
           onClose={() => {
             setSelected(undefined);
             requestAnimationFrame(() => trigger.current?.focus());

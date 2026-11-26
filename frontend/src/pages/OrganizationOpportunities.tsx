@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
 import { ApiError } from '../api/auth';
+import { EventAttendees } from '../components/EventAttendees';
 import { InternalRegistration } from '../components/InternalRegistration';
 import {
   listOpportunities,
@@ -27,6 +28,7 @@ type SectionProps = {
   id: string;
   accessToken: string;
   canPublish: boolean;
+  canViewAttendees: boolean;
   onUnauthorized: () => void;
 };
 
@@ -34,6 +36,7 @@ export function OrganizationOpportunities({
   id,
   accessToken,
   canPublish,
+  canViewAttendees,
   onUnauthorized,
 }: SectionProps) {
   const [query, setQuery] = useState({ page: 0 });
@@ -148,13 +151,23 @@ export function OrganizationOpportunities({
                   <p>{item.location}</p>
                   <p className="profile-bio">{item.description}</p>
                   {item.registrationType === 'INTERNAL' && (
-                    <InternalRegistration
-                      key={item.eventStart}
-                      eventId={item.id}
-                      eventStart={item.eventStart}
-                      accessToken={accessToken}
-                      onUnauthorized={onUnauthorized}
-                    />
+                    <div className="event-registration-actions">
+                      <InternalRegistration
+                        key={item.eventStart}
+                        eventId={item.id}
+                        eventStart={item.eventStart}
+                        accessToken={accessToken}
+                        onUnauthorized={onUnauthorized}
+                      />
+                      {canViewAttendees && (
+                        <EventAttendees
+                          eventId={item.id}
+                          eventTitle={item.title}
+                          accessToken={accessToken}
+                          onUnauthorized={onUnauthorized}
+                        />
+                      )}
+                    </div>
                   )}
                   {registration && (
                     <a
@@ -227,7 +240,7 @@ function PublishDialog({
   onForbidden,
   onRefresh,
   onPublished,
-}: Omit<SectionProps, 'canPublish'> & {
+}: Pick<SectionProps, 'id' | 'accessToken' | 'onUnauthorized'> & {
   onClose: () => void;
   onForbidden: () => void;
   onRefresh: () => void;
