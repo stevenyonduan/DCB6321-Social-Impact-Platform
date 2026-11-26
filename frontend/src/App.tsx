@@ -10,6 +10,7 @@ import {
   getPage,
   isAccountPage,
   isOrganizationPage,
+  isPostPage,
   NavigationContext,
 } from './navigation';
 
@@ -24,8 +25,16 @@ const SavedPosts = lazy(() =>
     default: SavedPosts,
   })),
 );
+const PostDetail = lazy(() =>
+  import('./pages/PostDetail').then(({ PostDetail }) => ({
+    default: PostDetail,
+  })),
+);
 
-const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
+const pageTitles: Record<
+  Exclude<Page, `organizations/${string}` | `posts/${string}`>,
+  string
+> = {
   landing: 'Making Service Social',
   login: 'Welcome back',
   signup: 'Join the community',
@@ -35,6 +44,16 @@ const pageTitles: Record<Exclude<Page, `organizations/${string}`>, string> = {
   'profile/saved-posts': 'Saved posts',
 };
 
+function postAfterSignIn() {
+  const requested = new URLSearchParams(window.location.search).get('next');
+  const route = requested?.startsWith('/') ? requested.slice(1) : '';
+  return isPostPage(route) ? route : undefined;
+}
+
+function accountPath(mode: 'login' | 'signup', post: string) {
+  return `/${mode}?${new URLSearchParams({ next: `/${post}` })}`;
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
   const { state, signIn, logout, expireSession, retry, replaceProfile } =
@@ -43,6 +62,11 @@ export default function App() {
   const accountPage = isAccountPage(page);
   const redirectToLogin = accountPage && state.status === 'anonymous';
   const visiblePage = redirectToLogin ? 'login' : page;
+  const returnPost = isPostPage(page)
+    ? page
+    : page === 'login' || page === 'signup'
+      ? postAfterSignIn()
+      : undefined;
 
   useEffect(() => {
     const onPopState = () => setPage(getPage());
@@ -52,15 +76,30 @@ export default function App() {
 
   useEffect(() => {
     if (redirectToLogin) {
-      window.history.replaceState(null, '', '/login');
+      window.history.replaceState(
+        null,
+        '',
+        returnPost ? accountPath('login', returnPost) : '/login',
+      );
     }
-    document.title = `${isOrganizationPage(visiblePage) ? 'Organization profile' : pageTitles[visiblePage]} | SOW`;
+    const title = isOrganizationPage(visiblePage)
+      ? 'Organization profile'
+      : isPostPage(visiblePage)
+        ? 'Post'
+        : pageTitles[visiblePage];
+    document.title = `${title} | SOW`;
     main.current?.focus();
     window.scrollTo(0, 0);
-  }, [redirectToLogin, state.status, visiblePage]);
+  }, [redirectToLogin, returnPost, state.status, visiblePage]);
 
   function navigate(next: Page) {
-    window.history.pushState(null, '', next === 'landing' ? '/' : `/${next}`);
+    const path =
+      (next === 'login' || next === 'signup') && returnPost
+        ? accountPath(next, returnPost)
+        : next === 'landing'
+          ? '/'
+          : `/${next}`;
+    window.history.pushState(null, '', path);
     setPage(next);
   }
 
@@ -92,11 +131,12 @@ export default function App() {
                 await signIn(visiblePage, input, signal);
                 if (!signal.aborted)
                   navigate(
-                    isOrganizationPage(page) ||
+                    returnPost ??
+                      (isOrganizationPage(page) ||
                       page === 'events' ||
                       page === 'profile/saved-posts'
-                      ? page
-                      : 'home',
+                        ? page
+                        : 'home'),
                   );
               }}
             />
@@ -153,6 +193,21 @@ export default function App() {
               key={state.profile.id}
               accessToken={state.accessToken}
               onUnauthorized={expireSession}
+            />
+          </Suspense>
+        )}
+        {isPostPage(visiblePage) && state.status === 'ready' && (
+          <Suspense
+            fallback={
+              <p className="content-width" role="status">
+                Loading post…
+              </p>
+            }
+          >
+            <PostDetail
+              key={`${state.profile.id}/${visiblePage}`}
+              id={visiblePage.slice('posts/'.length).toLowerCase()}
+              account={{ ...state, onUnauthorized: expireSession }}
             />
           </Suspense>
         )}
