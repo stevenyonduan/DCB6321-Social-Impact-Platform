@@ -713,6 +713,99 @@ input::placeholder {
   border: 1px solid var(--border);
   border-radius: 12px;
 }
+.post-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.post-options {
+  position: relative;
+  flex: none;
+}
+.post-options-trigger {
+  display: grid;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+}
+.post-options-trigger:hover,
+.post-options-trigger[aria-expanded='true'] {
+  background: var(--cream);
+}
+.post-options-list,
+.post-link-feedback {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 4px);
+  right: 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 5px 18px #193b2722;
+}
+.post-options-list {
+  min-width: 158px;
+}
+.post-options-list button {
+  display: block;
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 13px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.post-options-list button:hover {
+  background: var(--cream);
+}
+.post-delete-action {
+  color: #a82020;
+}
+.post-delete-confirm {
+  color: white;
+  background: #a82020;
+}
+.post-link-feedback {
+  width: max-content;
+  max-width: 220px;
+  padding: 10px;
+  font-size: 13px;
+}
+.post-link-feedback label {
+  margin: 0;
+}
+.post-detail-page {
+  max-width: 720px;
+  padding-block: 32px 64px;
+}
+.post-detail-page h1 {
+  margin-bottom: 18px;
+}
+.post-detail-page .text-link {
+  display: inline-block;
+  margin-top: 10px;
+}
+.post-editor h2,
+.post-editor form > p,
+.post-editor form > .post-image,
+.post-editor .composer-image-preview {
+  margin-bottom: 16px;
+}
+.post-editor textarea {
+  resize: vertical;
+}
+.post-editor form > p {
+  font-size: 13px;
+}
 .post-author {
   display: flex;
   align-items: center;
@@ -810,7 +903,7 @@ input::placeholder {
   padding-top: 14px;
   font-size: 13px;
 }
-.post-comments form {
+.post-comments > form {
   margin-top: 14px;
 }
 .post-comment-list {
@@ -832,6 +925,14 @@ input::placeholder {
 }
 .post-comment-list p {
   white-space: pre-wrap;
+}
+.post-comment-content {
+  flex: 1;
+  min-width: 0;
+}
+.post-comment-feedback {
+  margin-top: 10px;
+  color: var(--green);
 }
 .profile-community {
   display: grid;

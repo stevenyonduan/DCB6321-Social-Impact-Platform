@@ -21,9 +21,28 @@ export type PostComment = {
 };
 
 type Page<T> = { items: T[]; hasNext: boolean };
-export const maxPostImageBytes = 5 * 1024 * 1024;
+const maxPostImageBytes = 5 * 1024 * 1024;
 export const postImageTypes = ['image/jpeg', 'image/png'];
 const maxTextBytes = 16_384;
+
+export function hasPostText(text: string | null) {
+  if (!text) return false;
+  // Match Java's whitespace and space-character checks, including ASCII separators.
+  for (const character of text) {
+    const code = character.charCodeAt(0);
+    if ((code < 28 || code > 31) && !/[\t-\r\p{Z}]/u.test(character))
+      return true;
+  }
+  return false;
+}
+
+export function isPostImage(file: File) {
+  return (
+    postImageTypes.includes(file.type) &&
+    file.size > 0 &&
+    file.size <= maxPostImageBytes
+  );
+}
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -121,6 +140,88 @@ export function loadSavedPosts(token: string, signal: AbortSignal) {
   return readCollection('/users/me/saved-posts', token, isPost, signal);
 }
 
+function postPath(id: string) {
+  return `/posts/${encodeURIComponent(id)}`;
+}
+
+function postRequest(
+  id: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  suffix = '',
+) {
+  return request(
+    postPath(id) + suffix,
+    init,
+    (value): value is Post => isPost(value) && value.id === id,
+    signal,
+  );
+}
+
+export function loadPost(id: string, token: string, signal: AbortSignal) {
+  return postRequest(id, { headers: headers(token) }, signal);
+}
+
+export async function editPostContent(
+  id: string,
+  textContent: string | null,
+  token: string,
+  signal: AbortSignal,
+) {
+  return postRequest(
+    id,
+    {
+      method: 'PATCH',
+      headers: { ...headers(token), 'Content-Type': 'application/json' },
+      body: jsonBody({ textContent }),
+    },
+    signal,
+  );
+}
+
+export function editPostImage(
+  id: string,
+  image: File | null,
+  token: string,
+  signal: AbortSignal,
+) {
+  const body = image ? new FormData() : undefined;
+  if (image) body?.append('image', image);
+  return postRequest(
+    id,
+    {
+      method: body ? 'PUT' : 'DELETE',
+      headers: headers(token),
+      body,
+    },
+    signal,
+    '/image',
+  );
+}
+
+export function deletePost(id: string, token: string, signal: AbortSignal) {
+  return request(
+    postPath(id),
+    { method: 'DELETE', headers: headers(token) },
+    (value): value is undefined => value === undefined,
+    signal,
+  );
+}
+
+export function deleteComment(
+  postId: string,
+  commentId: string,
+  token: string,
+  signal: AbortSignal,
+) {
+  return request(
+    `${postPath(postId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE', headers: headers(token) },
+    (value): value is undefined => value === undefined,
+    signal,
+  );
+}
+
 export function loadComments(
   postId: string,
   token: string,
@@ -147,7 +248,7 @@ export async function createPost(
       throw new ApiError(413, 'REQUEST_TOO_LARGE');
     body = new FormData();
     body.append('image', image);
-    if (text.trim()) body.append('textContent', text);
+    if (hasPostText(text)) body.append('textContent', text);
   } else {
     body = jsonBody({ textContent: text });
   }

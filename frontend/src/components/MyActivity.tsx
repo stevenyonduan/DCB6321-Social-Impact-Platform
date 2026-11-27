@@ -10,6 +10,8 @@ export function MyActivity({ account }: { account: CommunityAccount }) {
   const { accessToken, onUnauthorized, profile } = account;
   const authorId = profile.id;
   const [posts, setPosts] = useState<Post[]>([]);
+  const [removal, setRemoval] = useState('');
+  const removalFeedback = useRef<HTMLParagraphElement>(null);
   const [batch, setBatch] = useState(0);
   const [result, setResult] = useState<{
     batch: number;
@@ -103,11 +105,42 @@ export function MyActivity({ account }: { account: CommunityAccount }) {
       <h2 className="profile-section-heading" id="profile-activity">
         Activity
       </h2>
+      {removal && (
+        <p
+          className="post-media-note"
+          role="status"
+          tabIndex={-1}
+          ref={removalFeedback}
+        >
+          {removal}
+        </p>
+      )}
       {posts.map((post) => (
         <CommunityPost
           key={post.id}
           post={post}
           account={account}
+          onRemove={(deleted) => {
+            const position = cursor.current;
+            if (position.page !== null) {
+              cursor.current = {
+                ...position,
+                page: Math.max(0, position.page - 1),
+              };
+              if (!status) {
+                setBatch((current) =>
+                  current === batch ? current + 1 : current,
+                );
+              }
+            }
+            setPosts((current) =>
+              current.filter((item) => item.id !== post.id),
+            );
+            setRemoval(
+              deleted ? 'Post deleted.' : 'This post is no longer available.',
+            );
+            requestAnimationFrame(() => removalFeedback.current?.focus());
+          }}
           onUpdate={(changes) =>
             setPosts((current) =>
               current.map((item) =>

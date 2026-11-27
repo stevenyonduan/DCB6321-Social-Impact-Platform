@@ -3,12 +3,16 @@ import { Bookmark, Heart, MessageCircle, UserRound } from 'lucide-react';
 import { ApiError, type Profile } from '../api/auth';
 import {
   createComment,
+  deleteComment,
   loadComments,
   updatePostInteraction,
   type Post,
   type PostComment,
 } from '../api/posts';
 import { PostImage } from './PostImage';
+import { PostActionMenu } from './PostActionMenu';
+import { PostEditorDialog } from './PostEditorDialog';
+import { PostOptions } from './PostOptions';
 
 export type CommunityAccount = {
   profile: Profile;
@@ -71,15 +75,21 @@ export function CommunityAvatar({
 export function CommunityPost({
   post,
   account,
+  commentsInitiallyOpen = false,
   onUpdate,
+  onRemove,
 }: {
   post: Post;
   account: CommunityAccount;
+  commentsInitiallyOpen?: boolean;
   onUpdate: (changes: Partial<Post>) => void;
+  onRemove: (deleted: boolean) => void;
 }) {
   const { profile, accessToken, onUnauthorized } = account;
   const [now] = useState(Date.now);
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState<
+    'automatic' | 'manual' | false
+  >(commentsInitiallyOpen ? 'automatic' : false);
   const [pending, setPending] = useState<'like' | 'save'>();
   const [error, setError] = useState('');
   const action = useRef<AbortController | null>(null);
@@ -130,15 +140,23 @@ export function CommunityPost({
 
   return (
     <article className="post-card" aria-labelledby={titleId}>
-      <div className="post-author">
-        <CommunityAvatar profile={profile} authorId={post.authorId} />
-        <div>
-          <h3 id={titleId}>{authorName(profile, post.authorId)}</h3>
-          <p>
-            Volunteer ·{' '}
-            <time dateTime={post.createdAt}>{age(post.createdAt, now)}</time>
-          </p>
+      <div className="post-card-header">
+        <div className="post-author">
+          <CommunityAvatar profile={profile} authorId={post.authorId} />
+          <div>
+            <h3 id={titleId}>{authorName(profile, post.authorId)}</h3>
+            <p>
+              Volunteer ·{' '}
+              <time dateTime={post.createdAt}>{age(post.createdAt, now)}</time>
+            </p>
+          </div>
         </div>
+        <PostOptions
+          post={post}
+          account={account}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+        />
       </div>
       {post.textContent && <p className="post-text">{post.textContent}</p>}
       {post.imageReference && (
@@ -160,9 +178,9 @@ export function CommunityPost({
         <button
           type="button"
           ref={commentButton}
-          aria-expanded={commentsOpen}
+          aria-expanded={Boolean(commentsOpen)}
           aria-controls={commentsOpen ? commentsId : undefined}
-          onClick={() => setCommentsOpen((open) => !open)}
+          onClick={() => setCommentsOpen((open) => (open ? false : 'manual'))}
         >
           <MessageCircle aria-hidden="true" /> Comment
         </button>
@@ -186,6 +204,7 @@ export function CommunityPost({
           postId={post.id}
           account={account}
           now={now}
+          focusOnOpen={commentsOpen === 'manual'}
           onCount={(commentCount) => onUpdate({ commentCount })}
           onClose={() => {
             setCommentsOpen(false);
@@ -202,6 +221,7 @@ function PostComments({
   postId,
   account,
   now,
+  focusOnOpen,
   onCount,
   onClose,
 }: {
@@ -209,6 +229,7 @@ function PostComments({
   postId: string;
   account: CommunityAccount;
   now: number;
+  focusOnOpen: boolean;
   onCount: (count: number) => void;
   onClose: () => void;
 }) {
@@ -218,9 +239,19 @@ function PostComments({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState<{
+    commentId: string;
+    button: HTMLButtonElement | null;
+  }>();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [feedback, setFeedback] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
   const action = useRef<AbortController | null>(null);
+  const cancelDelete = useRef<HTMLButtonElement>(null);
+  const feedbackElement = useRef<HTMLParagraphElement>(null);
 
+  useEffect(() => () => action.current?.abort(), []);
   useEffect(() => {
     const controller = new AbortController();
     void loadComments(postId, accessToken, controller.signal).then(
@@ -234,17 +265,16 @@ function PostComments({
         else setThread(null);
       },
     );
-    return () => {
-      controller.abort();
-      action.current?.abort();
-    };
+    return () => controller.abort();
   }, [accessToken, attempt, onUnauthorized, postId]);
 
-  useEffect(() => field.current?.focus(), []);
+  useEffect(() => {
+    if (focusOnOpen) field.current?.focus();
+  }, [focusOnOpen]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!thread || !draft.trim() || action.current) return;
+    if (!thread || !draft.trim() || selected || action.current) return;
     const controller = new AbortController();
     action.current = controller;
     setSending(true);
@@ -277,6 +307,61 @@ function PostComments({
     }
   }
 
+  function closeDelete() {
+    if (action.current) return;
+    const button = selected?.button;
+    setSelected(undefined);
+    requestAnimationFrame(() => button?.focus());
+  }
+
+  async function confirmDelete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !thread || action.current) return;
+    const currentThread = thread;
+    const controller = new AbortController();
+    action.current = controller;
+    setDeleting(true);
+    setDeleteError('');
+    const { commentId } = selected;
+
+    function remove(message: string) {
+      const remaining = currentThread.filter(
+        (comment) => comment.id !== commentId,
+      );
+      setThread(remaining);
+      onCount(remaining.length);
+      setSelected(undefined);
+      setFeedback(message);
+      requestAnimationFrame(() => feedbackElement.current?.focus());
+    }
+
+    try {
+      await deleteComment(postId, commentId, accessToken, controller.signal);
+      if (!controller.signal.aborted) remove('Comment deleted.');
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      if (failure instanceof ApiError && failure.status === 401) {
+        onUnauthorized();
+      } else if (
+        failure instanceof ApiError &&
+        failure.code === 'COMMENT_NOT_FOUND'
+      ) {
+        remove('This comment is no longer available.');
+      } else {
+        setDeleteError(
+          failure instanceof ApiError && failure.status === 403
+            ? 'You no longer have permission to delete this comment.'
+            : failure instanceof ApiError && failure.code === 'POST_NOT_FOUND'
+              ? 'This post is no longer available.'
+              : 'Couldn’t confirm deletion. Try again.',
+        );
+      }
+    } finally {
+      action.current = null;
+      if (!controller.signal.aborted) setDeleting(false);
+    }
+  }
+
   return (
     <section id={id} className="post-comments" aria-label="Comments">
       {thread === undefined && <p role="status">Loading comments…</p>}
@@ -300,7 +385,7 @@ function PostComments({
           {thread.map((comment) => (
             <li key={comment.id}>
               <CommunityAvatar profile={profile} authorId={comment.authorId} />
-              <div>
+              <div className="post-comment-content">
                 <strong>{authorName(profile, comment.authorId)}</strong>
                 {' · '}
                 <time dateTime={comment.createdAt}>
@@ -308,11 +393,31 @@ function PostComments({
                 </time>
                 <p>{comment.content}</p>
               </div>
+              {comment.authorId === profile.id && (
+                <CommentOptions
+                  onDelete={(button) => {
+                    if (action.current) return;
+                    setDeleteError('');
+                    setFeedback('');
+                    setSelected({ commentId: comment.id, button });
+                  }}
+                />
+              )}
             </li>
           ))}
         </ul>
       ) : (
         thread && <p className="profile-empty">No comments yet.</p>
+      )}
+      {feedback && (
+        <p
+          className="post-comment-feedback"
+          role="status"
+          tabIndex={-1}
+          ref={feedbackElement}
+        >
+          {feedback}
+        </p>
       )}
       <form onSubmit={(event) => void submit(event)}>
         <label>
@@ -348,6 +453,61 @@ function PostComments({
           </button>
         </div>
       </form>
+      {selected && (
+        <PostEditorDialog
+          title="Delete comment"
+          initialFocus={cancelDelete}
+          busy={deleting}
+          onClose={closeDelete}
+          onSubmit={(event) => void confirmDelete(event)}
+        >
+          <p>Delete this comment permanently?</p>
+          {deleteError && (
+            <p className="form-error" role="alert">
+              {deleteError}
+            </p>
+          )}
+          <div className="organization-form-actions">
+            <button
+              type="button"
+              className="button dialog-cancel"
+              ref={cancelDelete}
+              disabled={deleting}
+              onClick={closeDelete}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="button post-delete-confirm"
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting…' : 'Delete comment'}
+            </button>
+          </div>
+        </PostEditorDialog>
+      )}
     </section>
+  );
+}
+
+function CommentOptions({
+  onDelete,
+}: {
+  onDelete: (button: HTMLButtonElement | null) => void;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  return (
+    <PostActionMenu
+      label="Comment options"
+      trigger={trigger}
+      actions={[
+        {
+          label: 'Delete comment',
+          select: () => onDelete(trigger.current),
+          destructive: true,
+        },
+      ]}
+    />
   );
 }

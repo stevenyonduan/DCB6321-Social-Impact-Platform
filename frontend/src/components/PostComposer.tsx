@@ -9,7 +9,8 @@ import {
 import { ApiError } from '../api/auth';
 import {
   createPost,
-  maxPostImageBytes,
+  hasPostText,
+  isPostImage,
   postImageTypes,
   type Post,
 } from '../api/posts';
@@ -50,11 +51,7 @@ export function PostComposer({
   function chooseImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (
-      !postImageTypes.includes(file.type) ||
-      file.size === 0 ||
-      file.size > maxPostImageBytes
-    ) {
+    if (!isPostImage(file)) {
       event.target.value = '';
       setImage(null);
       setPreview('');
@@ -78,7 +75,7 @@ export function PostComposer({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current || (!text.trim() && !image)) return;
+    if (pending.current || (!hasPostText(text) && !image)) return;
     const controller = new AbortController();
     pending.current = controller;
     setSaving(true);
@@ -188,7 +185,7 @@ export function PostComposer({
             <button
               className="button primary"
               type="submit"
-              disabled={saving || (!text.trim() && !image)}
+              disabled={saving || (!hasPostText(text) && !image)}
             >
               {saving ? 'Posting…' : 'Post'}
             </button>

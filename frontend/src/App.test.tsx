@@ -2173,6 +2173,358 @@ describe('profile page', () => {
   });
 });
 
+describe('shared post pages and author actions', () => {
+  const postId = 'c597c9f7-4c4f-4c71-83aa-866fa418a5ee';
+  const postRoute = `/posts/${postId}`;
+  const postApi = `/api${postRoute}`;
+  const imageReference =
+    'social-posts/posts/bb73653c-38f9-4137-ad8d-668350f19012.png';
+  const original = {
+    id: postId,
+    authorId: id,
+    textContent: 'Meet at the park gate.',
+    imageReference: null as string | null,
+    createdAt: '2026-11-17T00:00:00Z',
+    likeCount: 0,
+    commentCount: 1,
+    liked: false,
+    saved: false,
+  };
+
+  async function options(action: string) {
+    await userEvent.click(screen.getByRole('button', { name: 'Post options' }));
+    await userEvent.click(screen.getByRole('button', { name: action }));
+    return within(screen.getByRole('dialog', { name: action }));
+  }
+
+  it('returns to a shared post after login and expands its comments', async () => {
+    window.history.replaceState(null, '', postRoute);
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/auth/login') return json(result());
+      if (url === '/api/users/me') return json(profile);
+      if (url === postApi) return json(original);
+      if (url === `${postApi}/comments?page=0&size=100`) {
+        return json({
+          items: [
+            {
+              id: 'comment-1',
+              postId,
+              authorId: id,
+              content: 'See you there!',
+              createdAt: original.createdAt,
+            },
+          ],
+          page: 0,
+          size: 100,
+          hasNext: false,
+        });
+      }
+      throw new Error('Unexpected request');
+    });
+    const view = render(<App />);
+    await screen.findByLabelText('Email address');
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('next')).toBe(
+      postRoute,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    view.unmount();
+    render(<App />);
+    await screen.findByLabelText('Email address');
+    const user = await fill();
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await screen.findByText('See you there!');
+    expect(window.location.pathname).toBe(postRoute);
+    expect(
+      screen.getByRole('navigation', { name: 'Main navigation' }),
+    ).toBeTruthy();
+    const commentBox = screen.getByRole('textbox', { name: 'Write a comment' });
+    expect(document.activeElement).not.toBe(commentBox);
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalledWith(feedPath, expect.anything());
+  });
+
+  it('shows an unavailable message for a deleted link', async () => {
+    restore();
+    window.history.replaceState(null, '', postRoute);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json({ code: 'POST_NOT_FOUND' }, 404));
+    render(<App />);
+    await screen.findByText('This post is no longer available.');
+    expect(
+      screen.getByRole('link', { name: 'Back to feed' }).getAttribute('href'),
+    ).toBe('/home');
+  });
+
+  it('copies a direct link and keeps author controls hidden on someone else’s post', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockResolvedValue(undefined);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(
+        json({
+          ...emptyFeed,
+          items: [{ ...original, authorId: 'other-user' }],
+        }),
+      );
+    render(<App />);
+    await user.click(
+      await screen.findByRole('button', { name: 'Post options' }),
+    );
+    expect(screen.queryByRole('button', { name: 'Edit content' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add image' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete post' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Copy link' }));
+    await screen.findByText('Link copied.');
+    expect(writeText).toHaveBeenCalledWith(
+      new URL(postRoute, window.location.origin).href,
+    );
+  });
+
+  it('edits exact text, disables blank text for text-only posts, and confirms deletion', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const updated = '  Meet at the south gate.  ';
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json({ ...emptyFeed, items: [original] }))
+      .mockResolvedValueOnce(json({ ...original, textContent: updated }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    render(<App />);
+    await screen.findByText(original.textContent);
+    const edit = await options('Edit content');
+    const textbox = edit.getByRole('textbox', { name: 'Post text' });
+    await userEvent.clear(textbox);
+    expect(
+      edit.getByRole<HTMLButtonElement>('button', { name: 'Save changes' })
+        .disabled,
+    ).toBe(true);
+    await userEvent.type(textbox, updated);
+    await userEvent.click(edit.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(updated.trim());
+    expect(fetch).toHaveBeenLastCalledWith(
+      postApi,
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ textContent: updated }),
+      }),
+    );
+
+    const first = await options('Delete post');
+    await userEvent.click(first.getByRole('button', { name: 'Cancel' }));
+    expect(fetch).not.toHaveBeenCalledWith(
+      postApi,
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    const deletion = await options('Delete post');
+    await userEvent.click(
+      deletion.getByRole('button', { name: 'Delete post' }),
+    );
+    await screen.findByText('Post deleted.');
+    expect(screen.queryByText(updated.trim())).toBeNull();
+    expect(fetch).toHaveBeenLastCalledWith(
+      postApi,
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('adds and replaces an image, clears text with an image, and only permits removal when text exists', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    auth.storageFrom.mockReturnValue({
+      getPublicUrl: () => ({
+        data: { publicUrl: 'https://example.test/image.png' },
+      }),
+    });
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL = () => 'blob:test-image';
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    const withImage = { ...original, imageReference };
+    const imageOnly = { ...withImage, textContent: null };
+    const updatedImage = {
+      ...imageOnly,
+      imageReference: imageReference.replace('.png', '.jpg'),
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json(profile))
+      .mockResolvedValueOnce(json({ ...emptyFeed, items: [original] }))
+      .mockResolvedValueOnce(json(withImage))
+      .mockResolvedValueOnce(json(imageOnly))
+      .mockResolvedValueOnce(json(updatedImage))
+      .mockResolvedValueOnce(
+        json({ ...updatedImage, textContent: original.textContent }),
+      )
+      .mockResolvedValueOnce(json(original));
+    render(<App />);
+    await screen.findByText(original.textContent);
+    const add = await options('Add image');
+    const image = new File(['png'], 'photo.png', { type: 'image/png' });
+    await userEvent.upload(add.getByLabelText('Choose an image'), image);
+    await userEvent.click(add.getByRole('button', { name: 'Add image' }));
+    await screen.findByRole('img', { name: 'Image attached to this post' });
+    const put = vi.mocked(fetch).mock.lastCall;
+    expect(put?.[0]).toBe(`${postApi}/image`);
+    expect(put?.[1]?.method).toBe('PUT');
+    expect(new Headers(put?.[1]?.headers).has('Content-Type')).toBe(false);
+    expect((put?.[1]?.body as FormData).get('image')).toBe(image);
+
+    const content = await options('Edit content');
+    await userEvent.clear(content.getByRole('textbox', { name: 'Post text' }));
+    await userEvent.click(
+      content.getByRole('button', { name: 'Save changes' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(original.textContent)).toBeNull(),
+    );
+    expect(fetch).toHaveBeenLastCalledWith(
+      postApi,
+      expect.objectContaining({
+        method: 'PATCH',
+        body: '{"textContent":null}',
+      }),
+    );
+
+    const replace = await options('Edit image');
+    expect(replace.queryByRole('button', { name: 'Remove image' })).toBeNull();
+    const replacement = new File(['jpeg'], 'photo.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(
+      replace.getByLabelText('Choose a replacement'),
+      replacement,
+    );
+    await userEvent.click(
+      replace.getByRole('button', { name: 'Save changes' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      (vi.mocked(fetch).mock.lastCall?.[1]?.body as FormData).get('image'),
+    ).toBe(replacement);
+
+    const restoreText = await options('Edit content');
+    await userEvent.type(
+      restoreText.getByRole('textbox', { name: 'Post text' }),
+      original.textContent,
+    );
+    await userEvent.click(
+      restoreText.getByRole('button', { name: 'Save changes' }),
+    );
+    await screen.findByText(original.textContent);
+    const remove = await options('Edit image');
+    await userEvent.click(remove.getByRole('button', { name: 'Remove image' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('img', { name: 'Image attached to this post' }),
+      ).toBeNull(),
+    );
+    expect(fetch).toHaveBeenLastCalledWith(
+      `${postApi}/image`,
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+});
+
+describe('deleting a comment', () => {
+  const postId = 'f13820e2-6a20-4b96-8632-af53ab63a6eb';
+  const commentId = '5d1c9b79-f40d-4700-87fc-23fa56fcd61a';
+  const postPath = `/api/posts/${postId}`;
+  const commentPath = `${postPath}/comments/${commentId}`;
+  const post = {
+    id: postId,
+    authorId: 'other-user',
+    textContent: 'Park cleanup photos',
+    imageReference: null,
+    createdAt: '2026-11-17T00:00:00Z',
+    likeCount: 0,
+    commentCount: 2,
+    liked: false,
+    saved: false,
+  };
+  const own = {
+    id: commentId,
+    postId,
+    authorId: id,
+    content: 'I can bring gloves.',
+    createdAt: post.createdAt,
+  };
+  const other = {
+    ...own,
+    id: 'another-comment',
+    authorId: post.authorId,
+    content: 'Thank you for helping!',
+  };
+
+  it.each([
+    [204, 'Comment deleted.'],
+    [404, 'This comment is no longer available.'],
+  ])(
+    'offers removal only on your own comment and reconciles a %s response',
+    async (status, message) => {
+      restore();
+      window.history.replaceState(null, '', `/posts/${postId}`);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(json(post))
+        .mockResolvedValueOnce(
+          json({ items: [other, own], page: 0, size: 100, hasNext: false }),
+        )
+        .mockResolvedValueOnce(
+          status === 204
+            ? new Response(null, { status })
+            : json({ code: 'COMMENT_NOT_FOUND' }, status),
+        );
+      render(<App />);
+      const otherComment = (await screen.findByText(other.content)).closest(
+        'li',
+      )!;
+      expect(
+        within(otherComment).queryByRole('button', { name: 'Comment options' }),
+      ).toBeNull();
+      const button = screen.getByRole('button', { name: 'Comment options' });
+      await userEvent.click(button);
+      expect(screen.queryByRole('button', { name: 'Edit comment' })).toBeNull();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Delete comment' }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Delete comment' });
+      const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+      expect(document.activeElement).toBe(cancel);
+      await userEvent.click(cancel);
+      await waitFor(() => expect(document.activeElement).toBe(button));
+      expect(fetch).not.toHaveBeenCalledWith(commentPath, expect.anything());
+
+      await userEvent.click(button);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Delete comment' }),
+      );
+      const confirm = screen.getByRole('dialog', { name: 'Delete comment' });
+      await userEvent.click(
+        within(confirm).getByRole('button', { name: 'Delete comment' }),
+      );
+      await screen.findByText(message);
+      expect(screen.queryByText(own.content)).toBeNull();
+      expect(screen.getByText(other.content)).toBeTruthy();
+      expect(screen.getByText('0 likes · 1 comment')).toBeTruthy();
+      expect(fetch).toHaveBeenLastCalledWith(
+        commentPath,
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer access-token',
+          }),
+        }),
+      );
+    },
+  );
+});
+
 describe('organization event attendee lists', () => {
   const event = {
     id: '91b9ac94-88ea-4053-9320-c776050b1f25',
