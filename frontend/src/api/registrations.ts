@@ -15,6 +15,69 @@ function isRegistration(value: unknown): value is Registration {
   );
 }
 
+type RegistrationPage<T> = { items: T[]; hasNext: boolean };
+const lastRegistrationPage = 10_000;
+
+function registrationPage<T>(
+  path: string,
+  page: number,
+  size: number,
+  validate: (value: unknown) => value is T,
+  token: string,
+  signal: AbortSignal,
+) {
+  return request(
+    `${path}?page=${page}&size=${size}`,
+    {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    },
+    (value): value is RegistrationPage<T> =>
+      object(value) &&
+      value.page === page &&
+      value.size === size &&
+      typeof value.hasNext === 'boolean' &&
+      Array.isArray(value.items) &&
+      value.items.every(validate),
+    signal,
+  );
+}
+
+export type EventAttendee = Registration & {
+  userId: string;
+  firstName: string;
+  lastName: string;
+};
+
+function isEventAttendee(value: unknown): value is EventAttendee {
+  return (
+    object(value) &&
+    typeof value.userId === 'string' &&
+    value.userId.length > 0 &&
+    typeof value.firstName === 'string' &&
+    typeof value.lastName === 'string' &&
+    isRegistration(value)
+  );
+}
+
+export function loadEventAttendees(
+  eventId: string,
+  page: number,
+  token: string,
+  signal: AbortSignal,
+) {
+  return registrationPage(
+    `/organizations/me/opportunities/${encodeURIComponent(eventId)}/registrations`,
+    page,
+    20,
+    isEventAttendee,
+    token,
+    signal,
+  ).then(({ items, hasNext }) => ({
+    items,
+    hasNext: hasNext && page < lastRegistrationPage,
+  }));
+}
+
 export type MyRegistration = Registration & {
   eventId: string;
   organizationId: string;
@@ -41,22 +104,13 @@ function isMyRegistration(value: unknown): value is MyRegistration {
 export async function loadMyRegistrations(token: string, signal: AbortSignal) {
   const size = 100;
   const registrations = new Map<string, MyRegistration>();
-  for (let page = 0; page <= 10_000; page++) {
-    const result = await request(
-      `/users/me/registrations?page=${page}&size=${size}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      },
-      (value): value is { items: MyRegistration[]; hasNext: boolean } =>
-        object(value) &&
-        value.page === page &&
-        value.size === size &&
-        typeof value.hasNext === 'boolean' &&
-        Array.isArray(value.items) &&
-        value.items.every(isMyRegistration),
+  for (let page = 0; page <= lastRegistrationPage; page++) {
+    const result = await registrationPage(
+      '/users/me/registrations',
+      page,
+      size,
+      isMyRegistration,
+      token,
       signal,
     );
     signal.throwIfAborted();

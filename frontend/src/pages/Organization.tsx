@@ -112,7 +112,8 @@ export function OrganizationPage({
   }
 
   const profile = organization;
-  const canEdit = canEditOrganization(account, id) && !denied;
+  const canManage = canEditOrganization(account, id);
+  const canEdit = canManage && !denied;
   const canEditAdmins =
     account.organizationId === id && account.organizationRole === 'OWNER';
   const website = websiteUrl(profile.website);
@@ -351,6 +352,7 @@ export function OrganizationPage({
           id={id}
           accessToken={accessToken}
           canPublish={canEdit}
+          canViewAttendees={canManage}
           onUnauthorized={onUnauthorized}
         />
       </div>

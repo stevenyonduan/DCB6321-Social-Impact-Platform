@@ -2524,3 +2524,230 @@ describe('deleting a comment', () => {
     },
   );
 });
+
+describe('organization event attendee lists', () => {
+  const event = {
+    id: '91b9ac94-88ea-4053-9320-c776050b1f25',
+    organizationId,
+    creatorId: id,
+    title: 'Piedmont Park Cleanup',
+    description: 'Pick up litter by the trails.',
+    location: 'Piedmont Park, Atlanta',
+    eventStart: '2099-01-16T14:00:00Z',
+    eventEnd: '2099-01-16T17:00:00Z',
+    createdAt: organization.createdAt,
+    imageUrl: null,
+    registrationType: 'INTERNAL',
+    registrationUrl: null,
+  };
+  const external = {
+    ...event,
+    id: '1b358d50-5a10-4c7e-a086-095a2300f04c',
+    title: 'Native Planting Day',
+    registrationType: 'EXTERNAL',
+    registrationUrl: 'https://example.org/register',
+  };
+  const attendee = {
+    id: '82ba282f-4d14-4548-8550-d95d15ae9b84',
+    userId: id,
+    firstName: 'Alex',
+    lastName: 'Volunteer',
+    registeredAt: organization.createdAt,
+  };
+  const roster = (page: number) =>
+    `/api/organizations/me/opportunities/${event.id}/registrations?page=${page}&size=20`;
+  const viewLabel = `View attendees for ${event.title}`;
+
+  function openPage({
+    path = organizationPath,
+    account = { ...profile, organizationId, organizationRole: 'OWNER' },
+    registeredOrganization = organizationId,
+    respond = () => json({ items: [], page: 0, size: 20, hasNext: false }),
+  }: {
+    path?: string;
+    account?: object;
+    registeredOrganization?: string;
+    respond?: (url: string) => Response | Promise<Response>;
+  } = {}) {
+    restore();
+    window.history.replaceState(null, '', path);
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/users/me') return json(account);
+      if (url === feedPath) return json(emptyFeed);
+      if (url === `/api${organizationPath}`) return json(organization);
+      if (url === opportunityPath)
+        return json({ ...emptyOpportunities, items: [event, external] });
+      if (url === `/api/opportunities/${event.id}/registrations/me`)
+        return json({
+          eventId: event.id,
+          registered: false,
+          registration: null,
+        });
+      if (url === '/api/users/me/registrations?page=0&size=100') {
+        return json({
+          items: [
+            {
+              ...event,
+              id: attendee.id,
+              eventId: event.id,
+              organizationId: registeredOrganization,
+              registeredAt: attendee.registeredAt,
+            },
+          ],
+          page: 0,
+          size: 100,
+          hasNext: false,
+        });
+      }
+      if (typeof url === 'string' && (url === roster(0) || url === roster(1)))
+        return respond(url);
+      throw new Error('Unexpected request');
+    });
+    render(<App />);
+  }
+
+  it('loads the owner’s attendee list on demand and retries a failed next page', async () => {
+    let failOnce = true;
+    openPage({
+      respond: (url) => {
+        if (url === roster(0))
+          return json({ items: [attendee], page: 0, size: 20, hasNext: true });
+        if (failOnce) {
+          failOnce = false;
+          return json({ code: 'REGISTRATION_UNAVAILABLE' }, 503);
+        }
+        return json({
+          items: [
+            attendee,
+            {
+              ...attendee,
+              id: 'second-registration',
+              firstName: 'Jo',
+              lastName: 'Rivera',
+            },
+          ],
+          page: 1,
+          size: 20,
+          hasNext: false,
+        });
+      },
+    });
+    const trigger = await screen.findByRole('button', { name: viewLabel });
+    const card = trigger.closest('li')!;
+    await within(card).findByRole('button', { name: 'Register' });
+    expect(
+      screen.queryByRole('button', {
+        name: `View attendees for ${external.title}`,
+      }),
+    ).toBeNull();
+    expect(fetch).not.toHaveBeenCalledWith(roster(0), expect.anything());
+
+    await userEvent.click(trigger);
+    const dialog = within(screen.getByRole('dialog', { name: 'Attendees' }));
+    expect(dialog.getByText(event.title)).toBeTruthy();
+    const name = await dialog.findByText('Alex Volunteer');
+    expect(name.closest('li')?.querySelector('time')?.dateTime).toBe(
+      attendee.registeredAt,
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      roster(0),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+    await userEvent.click(dialog.getByRole('button', { name: 'Load more' }));
+    await dialog.findByText('Couldn’t load attendees.');
+    expect(dialog.getByText('Alex Volunteer')).toBeTruthy();
+    await userEvent.click(dialog.getByRole('button', { name: 'Try again' }));
+    await dialog.findByText('Jo Rivera');
+    expect(dialog.getAllByText('Alex Volunteer')).toHaveLength(1);
+    expect(dialog.queryByRole('button', { name: 'Load more' })).toBeNull();
+    await userEvent.click(dialog.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it.each([
+    { ...profile, role: 'ADMIN' },
+    { ...profile, organizationId: id, organizationRole: 'OWNER' },
+  ])(
+    'hides attendee access from viewers outside the organizing organization',
+    async (account) => {
+      openPage({ account });
+      await screen.findByRole('heading', { name: event.title });
+      expect(screen.queryByRole('button', { name: viewLabel })).toBeNull();
+      expect(fetch).not.toHaveBeenCalledWith(roster(0), expect.anything());
+    },
+  );
+
+  it.each(['/home', '/events'])(
+    'shows a matching admin the list from %s event details and returns focus',
+    async (path) => {
+      openPage({
+        path,
+        account: { ...profile, organizationId, organizationRole: 'ADMIN' },
+      });
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name:
+            path === '/home'
+              ? `Take a look at ${event.title}`
+              : new RegExp(event.title),
+        }),
+      );
+      const detailDialog = screen.getByRole('dialog', { name: event.title });
+      const trigger = within(detailDialog).getByRole('button', {
+        name: viewLabel,
+      });
+      expect(fetch).not.toHaveBeenCalledWith(roster(0), expect.anything());
+      await userEvent.click(trigger);
+      const attendees = screen.getByRole('dialog', { name: 'Attendees' });
+      await within(attendees).findByText('No registrations yet.');
+      fireEvent(
+        attendees,
+        new Event('cancel', { cancelable: true, bubbles: true }),
+      );
+      expect(screen.queryByRole('dialog', { name: 'Attendees' })).toBeNull();
+      expect(screen.getByRole('dialog', { name: event.title })).toBe(
+        detailDialog,
+      );
+      await waitFor(() => expect(document.activeElement).toBe(trigger));
+    },
+  );
+
+  it('hides attendee access in My Events for a manager registered with a different organizer', async () => {
+    openPage({
+      path: '/events',
+      account: { ...profile, organizationId, organizationRole: 'ADMIN' },
+      registeredOrganization: id,
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: new RegExp(event.title) }),
+    );
+    const detailDialog = screen.getByRole('dialog', { name: event.title });
+    expect(
+      within(detailDialog).queryByRole('button', { name: viewLabel }),
+    ).toBeNull();
+  });
+
+  it('clears attendee names if a later page is refused by the backend', async () => {
+    openPage({
+      respond: (url) =>
+        url === roster(0)
+          ? json({ items: [attendee], page: 0, size: 20, hasNext: true })
+          : json({ code: 'FORBIDDEN' }, 403),
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: viewLabel }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: 'Attendees' }));
+    await dialog.findByText('Alex Volunteer');
+    await userEvent.click(dialog.getByRole('button', { name: 'Load more' }));
+    await dialog.findByText(
+      'You don’t have permission to view attendees for this event.',
+    );
+    expect(dialog.queryByText('Alex Volunteer')).toBeNull();
+    expect(dialog.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+});

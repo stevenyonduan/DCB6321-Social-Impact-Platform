@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronRight, Clock, List, MapPin } from 'lucide-react';
-import { ApiError } from '../api/auth';
+import { ApiError, type Profile } from '../api/auth';
+import { canEditOrganization } from '../api/organizations';
 import { loadMyRegistrations, type MyRegistration } from '../api/registrations';
 import { EventsCalendar } from '../components/EventsCalendar';
 import { RegisteredEventDialog } from '../components/RegisteredEventDialog';
@@ -67,9 +68,11 @@ function EventList({
 }
 
 export function MyEvents({
+  profile,
   accessToken,
   onUnauthorized,
 }: {
+  profile: Profile;
   accessToken: string;
   onUnauthorized: () => void;
 }) {
@@ -245,6 +248,10 @@ export function MyEvents({
         <RegisteredEventDialog
           event={selected}
           now={now}
+          canViewAttendees={canEditOrganization(
+            profile,
+            selected.organizationId,
+          )}
           accessToken={accessToken}
           onUnauthorized={onUnauthorized}
           onClose={closeEvent}

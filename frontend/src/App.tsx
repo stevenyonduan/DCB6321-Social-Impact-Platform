@@ -191,6 +191,7 @@ export default function App() {
           >
             <MyEvents
               key={state.profile.id}
+              profile={state.profile}
               accessToken={state.accessToken}
               onUnauthorized={expireSession}
             />

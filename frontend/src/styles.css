@@ -1103,12 +1103,14 @@ input::placeholder {
 .edit-admins-footer {
   margin-top: 16px;
 }
-.organization-admin-list {
+.organization-admin-list,
+.event-attendee-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.organization-admin-list li + li {
+.organization-admin-list li + li,
+.event-attendee-list li + li {
   border-top: 1px solid var(--border);
 }
 .organization-admin-row {
@@ -1160,6 +1162,20 @@ input::placeholder {
 .edit-admins-dialog .organization-admin-success {
   color: var(--green);
 }
+.event-attendee-list {
+  margin-block: 12px 16px;
+}
+.event-attendee-list li {
+  padding-block: 9px;
+  overflow-wrap: anywhere;
+}
+.event-attendee-list li p + p {
+  margin-top: 3px;
+  font-size: 13px;
+}
+.event-attendees-dialog .organization-form-actions {
+  margin-top: 16px;
+}
 .opportunity-heading {
   display: flex;
   align-items: baseline;
@@ -1177,7 +1193,7 @@ input::placeholder {
   padding: 0;
   list-style: none;
 }
-.opportunity-list li {
+.opportunity-list > li {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -1186,7 +1202,7 @@ input::placeholder {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
-.opportunity-list li > div {
+.opportunity-list > li > div {
   flex: 1 1 240px;
   min-width: 0;
 }
@@ -1198,6 +1214,16 @@ input::placeholder {
 }
 .internal-registration {
   margin-top: 12px;
+}
+.event-registration-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.event-registration-actions .internal-registration {
+  margin-top: 0;
 }
 .internal-registration p:not(:empty) + button {
   margin-top: 6px;

@@ -7,6 +7,7 @@ import { EventDetailsDialog } from './EventDetailsDialog';
 export function RegisteredEventDialog({
   event,
   now,
+  canViewAttendees,
   accessToken,
   onUnauthorized,
   onClose,
@@ -14,6 +15,7 @@ export function RegisteredEventDialog({
 }: {
   event: MyRegistration;
   now: number;
+  canViewAttendees: boolean;
   accessToken: string;
   onUnauthorized: () => void;
   onClose: () => void;
@@ -149,6 +151,11 @@ export function RegisteredEventDialog({
       showDescription={lookupDescription}
       status={ended ? 'Past event' : started ? 'In progress' : 'Registered'}
       busy={saving}
+      attendees={
+        canViewAttendees
+          ? { eventId: event.eventId, accessToken, onUnauthorized }
+          : undefined
+      }
       onClose={() => {
         if (!pending.current) onClose();
       }}

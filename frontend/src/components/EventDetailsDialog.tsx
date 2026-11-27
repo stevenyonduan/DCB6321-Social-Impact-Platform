@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { CalendarDays, Clock, MapPin, X } from 'lucide-react';
 import type { Opportunity } from '../api/opportunities';
 import { isOrganizationPage } from '../navigation';
+import { EventAttendees, type AttendeeAccess } from './EventAttendees';
 import { PageLink } from './PageLink';
 
 const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'full' });
@@ -17,6 +18,7 @@ export function EventDetailsDialog({
   showDescription = true,
   status,
   busy = false,
+  attendees,
   onClose,
   children,
 }: {
@@ -28,6 +30,7 @@ export function EventDetailsDialog({
   showDescription?: boolean;
   status?: string;
   busy?: boolean;
+  attendees?: AttendeeAccess;
   onClose: () => void;
   children?: ReactNode;
 }) {
@@ -114,6 +117,15 @@ export function EventDetailsDialog({
         </PageLink>
       )}
       {children}
+      {attendees && (
+        <div className="registered-event-actions">
+          <EventAttendees
+            {...attendees}
+            eventTitle={event.title}
+            disabled={busy}
+          />
+        </div>
+      )}
     </dialog>
   );
 }
