@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/auth';
 import { loadFeed, loadSavedPosts, type Post } from '../api/posts';
 import { CommunityPost, type CommunityAccount } from './CommunityPost';
@@ -12,6 +12,9 @@ export function CommunityPosts({
   saved?: boolean;
 }) {
   const [posts, setPosts] = useState<Post[]>([]);
+  const removedIds = useRef(new Set<string>());
+  const removalFeedback = useRef<HTMLParagraphElement>(null);
+  const [removal, setRemoval] = useState('');
   const [query, setQuery] = useState({ page: 0 });
   const [result, setResult] = useState<{
     query: typeof query;
@@ -35,7 +38,12 @@ export function CommunityPosts({
         if (signal.aborted) return;
         setPosts((existing) => {
           const seen = new Set(existing.map((post) => post.id));
-          return [...existing, ...items.filter((post) => !seen.has(post.id))];
+          return [
+            ...existing,
+            ...items.filter(
+              (post) => !seen.has(post.id) && !removedIds.current.has(post.id),
+            ),
+          ];
         });
         setResult({ query, hasNext });
       },
@@ -68,11 +76,32 @@ export function CommunityPosts({
           Post published.
         </p>
       )}
+      {removal && (
+        <p
+          className="post-media-note"
+          role="status"
+          tabIndex={-1}
+          ref={removalFeedback}
+        >
+          {removal}
+        </p>
+      )}
       {posts.map((post) => (
         <CommunityPost
           key={post.id}
           account={account}
           post={post}
+          onRemove={(deleted) => {
+            removedIds.current.add(post.id);
+            setPosts((existing) =>
+              existing.filter((item) => item.id !== post.id),
+            );
+            if (!saved && query.page > 0) setQuery({ page: query.page - 1 });
+            setRemoval(
+              deleted ? 'Post deleted.' : 'This post is no longer available.',
+            );
+            requestAnimationFrame(() => removalFeedback.current?.focus());
+          }}
           onUpdate={(changes) =>
             setPosts((existing) =>
               existing.map((item) =>
