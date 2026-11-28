@@ -1,5 +1,6 @@
 package edu.gatech.sip6321.auth;
 
+import edu.gatech.sip6321.social.ValidatedImage;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -17,18 +18,20 @@ import org.springframework.web.util.ServletRequestPathUtils;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
-/** Bound PATCH buffering, including bodies without Content-Length, before MVC parses JSON. */
+/** Apply profile request size and body rules before MVC deserialization. */
 @Component
 @ConditionalOnProperty(name = "SIP_AUTH_ENABLED", havingValue = "true")
 public class ProfileRequestFilter extends OncePerRequestFilter {
     private static final int LIMIT = 16384;
     private static final PathPattern PROFILE_PATH =
             PathPatternParser.defaultInstance.parse("/api/users/me");
+    private static final PathPattern AVATAR_PATH =
+            PathPatternParser.defaultInstance.parse("/api/users/me/avatar");
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         var path = ServletRequestPathUtils.parseAndCache(request).pathWithinApplication();
-        return !PROFILE_PATH.matches(path);
+        return !(PROFILE_PATH.matches(path) || AVATAR_PATH.matches(path));
     }
 
     @Override
@@ -36,16 +39,16 @@ public class ProfileRequestFilter extends OncePerRequestFilter {
             HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         response.setHeader("Cache-Control", "no-store");
+        if (AVATAR_PATH.matches(
+                ServletRequestPathUtils.getParsedRequestPath(request).pathWithinApplication())) {
+            avatarRequest(request, response, chain);
+            return;
+        }
         if (!"PATCH".equals(request.getMethod())) {
             chain.doFilter(request, response);
             return;
         }
-        try {
-            if (request.getContentType() == null
-                    || !MediaType.APPLICATION_JSON.isCompatibleWith(
-                            MediaType.parseMediaType(request.getContentType())))
-                throw new IllegalArgumentException();
-        } catch (IllegalArgumentException exception) {
+        if (!accepts(request, MediaType.APPLICATION_JSON)) {
             error(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Use application/json.");
             return;
         }
@@ -88,6 +91,49 @@ public class ProfileRequestFilter extends OncePerRequestFilter {
                     }
                 },
                 response);
+    }
+
+    private void avatarRequest(
+            HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        if ("PUT".equals(request.getMethod())) {
+            if (!accepts(request, MediaType.MULTIPART_FORM_DATA)) {
+                error(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Use multipart/form-data.");
+                return;
+            }
+            if (request.getContentLengthLong() > ValidatedImage.MAX_BYTES + 65536) {
+                avatarTooLarge(response);
+                return;
+            }
+            try {
+                // Bound both regular and chunked uploads through the servlet's multipart limits.
+                request.getParts();
+            } catch (IllegalStateException e) {
+                avatarTooLarge(response);
+                return;
+            } catch (ServletException e) {
+                error(response, 400, "INVALID_REQUEST", "Send exactly one image file.");
+                return;
+            }
+        } else if ("DELETE".equals(request.getMethod())
+                && (request.getContentLengthLong() > 0 || request.getInputStream().read() != -1)) {
+            error(response, 400, "INVALID_REQUEST", "Send the request without a body.");
+            return;
+        }
+        chain.doFilter(request, response);
+    }
+
+    private boolean accepts(HttpServletRequest request, MediaType type) {
+        try {
+            return request.getContentType() != null
+                    && type.isCompatibleWith(MediaType.parseMediaType(request.getContentType()));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private void avatarTooLarge(HttpServletResponse response) throws IOException {
+        error(response, 413, "REQUEST_TOO_LARGE", "Profile photo exceeds the 5 MiB limit.");
     }
 
     private void tooLarge(HttpServletResponse response) throws IOException {

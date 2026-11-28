@@ -43,7 +43,7 @@ public class SocialFailure extends RuntimeException {
         return new SocialFailure(415, "INVALID_IMAGE", "Use a valid JPEG or PNG image.");
     }
 
-    static SocialFailure storage() {
+    public static SocialFailure storage() {
         return new SocialFailure(
                 503, "STORAGE_UNAVAILABLE", "Image storage is temporarily unavailable.");
     }

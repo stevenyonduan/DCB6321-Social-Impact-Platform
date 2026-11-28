@@ -12,7 +12,7 @@ public record ValidatedImage(byte[] bytes, String mediaType, String extension) {
     static final long MAX_PIXELS = 16_000_000;
     static final int MAX_DIMENSION = 8192;
 
-    static ValidatedImage read(MultipartFile file) {
+    public static ValidatedImage read(MultipartFile file) {
         if (file == null || file.isEmpty()) throw SocialFailure.image();
         if (file.getSize() > MAX_BYTES) throw SocialFailure.large();
         try (var stream = file.getInputStream()) {

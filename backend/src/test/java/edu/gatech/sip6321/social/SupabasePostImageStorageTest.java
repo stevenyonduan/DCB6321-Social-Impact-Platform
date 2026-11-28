@@ -13,13 +13,16 @@ class SupabasePostImageStorageTest {
     HttpServer server;
     HttpClient client;
     SupabasePostImageStorage storage;
+    SupabaseImageObjects objects;
     List<String> requests;
     int uploadStatus;
+    byte[] downloadBytes;
 
     @BeforeEach
     void setup() throws Exception {
         requests = new ArrayList<>();
         uploadStatus = 200;
+        downloadBytes = ValidatedImageTest.bytes("png");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(
                 "/",
@@ -36,6 +39,14 @@ class SupabasePostImageStorageTest {
                                 .isEqualTo("false");
                     }
                     exchange.getRequestBody().readAllBytes();
+                    if (exchange.getRequestMethod().equals("GET")) {
+                        exchange.getResponseHeaders().set("Content-Type", "image/png");
+                        exchange.sendResponseHeaders(200, 0);
+                        try (var output = exchange.getResponseBody()) {
+                            output.write(downloadBytes);
+                        }
+                        return;
+                    }
                     int status = exchange.getRequestMethod().equals("POST") ? uploadStatus : 200;
                     exchange.getResponseHeaders().set("Location", "http://127.0.0.1:1/forbidden");
                     exchange.sendResponseHeaders(status, 0);
@@ -44,6 +55,11 @@ class SupabasePostImageStorageTest {
                 });
         server.start();
         client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        objects =
+                new SupabaseImageObjects(
+                        client,
+                        URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                        "fake.service.jwt");
         storage =
                 new SupabasePostImageStorage(
                         client,
@@ -94,6 +110,20 @@ class SupabasePostImageStorageTest {
                         "social/posts/anything.png"))
             assertThatThrownBy(() -> storage.delete(ref)).isInstanceOf(SocialFailure.class);
         assertThat(requests).isEmpty();
+    }
+
+    @Test
+    void downloadsPrivateImageAndRejectsUnexpectedContentAndOversizedChunkedBodies() {
+        String reference =
+                "profile-avatars/avatars/" + UUID.randomUUID() + "/" + UUID.randomUUID() + ".png";
+        assertThat(objects.download(reference, "image/png")).isEqualTo(downloadBytes);
+        assertThat(requests).containsExactly("GET /storage/v1/object/authenticated/" + reference);
+
+        assertThatThrownBy(() -> objects.download(reference, "image/jpeg"))
+                .isInstanceOf(SocialFailure.class);
+        downloadBytes = new byte[ValidatedImage.MAX_BYTES + 1];
+        assertThatThrownBy(() -> objects.download(reference, "image/png"))
+                .isInstanceOf(SocialFailure.class);
     }
 
     @Test

@@ -42,7 +42,7 @@ public class SocialController {
     public ResponseEntity<PostResponse> createImage(
             @RequestHeader HttpHeaders headers, MultipartHttpServletRequest request)
             throws Exception {
-        var image = multipart(request, true);
+        var image = ImageMultipart.read(request, true);
         return ResponseEntity.status(201)
                 .cacheControl(CacheControl.noStore())
                 .body(social.create(auth(headers), request.getParameter("textContent"), image));
@@ -84,7 +84,7 @@ public class SocialController {
             @PathVariable UUID postId,
             MultipartHttpServletRequest request)
             throws Exception {
-        return ok(social.image(auth(headers), postId, multipart(request, false), false));
+        return ok(social.image(auth(headers), postId, ImageMultipart.read(request, false), false));
     }
 
     @DeleteMapping("/api/posts/{postId}/image")
@@ -143,30 +143,5 @@ public class SocialController {
             @PathVariable UUID commentId) {
         social.deleteComment(auth(headers), postId, commentId);
         return empty();
-    }
-
-    private MultipartFile multipart(MultipartHttpServletRequest request, boolean text)
-            throws Exception {
-        // Inspect raw parts too: duplicate files/fields and file-like protected fields all fail.
-        var seen = new HashSet<String>();
-        for (var part : request.getParts()) {
-            String name = part.getName();
-            if (!seen.add(name) || !(name.equals("image") || (text && name.equals("textContent"))))
-                throw SocialFailure.invalid();
-            if (name.equals("textContent")) {
-                if (part.getSubmittedFileName() != null) throw SocialFailure.invalid();
-                if (part.getSize() > SocialText.MAX_BYTES) throw SocialFailure.large();
-            }
-        }
-        // MockMvc file requests may expose files/parameters without servlet Parts.
-        for (var entry : request.getMultiFileMap().entrySet())
-            if (!entry.getKey().equals("image") || entry.getValue().size() != 1)
-                throw SocialFailure.invalid();
-        for (var entry : request.getParameterMap().entrySet())
-            if (!(text && entry.getKey().equals("textContent")) || entry.getValue().length != 1)
-                throw SocialFailure.invalid();
-        var file = request.getFile("image");
-        if (file == null) throw SocialFailure.invalid();
-        return file;
     }
 }

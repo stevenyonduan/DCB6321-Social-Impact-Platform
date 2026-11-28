@@ -1,5 +1,34 @@
 # API and interfaces — Detailed Design Document requirements
 
+## Own profile photo
+
+These routes use the verified Bearer identity and the caller's existing application profile.
+
+| Method | URL | Request | Success |
+| --- | --- | --- | --- |
+| GET | `/api/users/me/avatar` | No body | `200` JPEG or PNG bytes |
+| PUT | `/api/users/me/avatar` | Multipart with exactly one file named `image` | `200` updated profile |
+| DELETE | `/api/users/me/avatar` | No body | `200` updated profile with `avatarUrl: null` |
+
+PUT adds or replaces the photo. It accepts JPEG and PNG files up to 5 MiB and validates their
+contents. DELETE is idempotent. A failed upload or rolled-back update preserves the previous
+photo. Upload and delete return the same profile shape as GET `/api/users/me`. For managed photos,
+`avatarUrl` holds a durable Storage object reference. Use the authenticated avatar GET to render
+it after upload or reload. A profile with no managed photo returns `404 AVATAR_NOT_FOUND` on GET.
+Files saved as legacy external avatar URLs keep their existing profile representation.
+Responses use `Cache-Control: no-store`.
+
+Malformed multipart requests return `400 INVALID_REQUEST`, files above the limit return
+`413 REQUEST_TOO_LARGE`, and invalid image data returns `415 INVALID_IMAGE`. The backend reports
+Storage failures as `503 STORAGE_UNAVAILABLE`. Object cleanup after commit or rollback is best effort.
+
+Before using uploads on Render, create a **private** Supabase Storage bucket named
+`profile-avatars` or set the backend's `SIP_AVATAR_STORAGE_BUCKET` to a separate private bucket.
+Allow JPEG/PNG and the 5 MiB file limit. Use `SIP_STORAGE_ENABLED=true` and the existing server-side
+Storage credentials, and keep
+the bucket free of browser read/write grants. Photos use the existing `public.users.avatar_url`
+column. [Backend Storage variables](../backend/.env.example) · [Supabase private buckets](https://supabase.com/docs/guides/storage/buckets/fundamentals)
+
 ## Interest catalog and selections
 
 These endpoints require a verified Bearer token and a persisted application account. Any signed-in

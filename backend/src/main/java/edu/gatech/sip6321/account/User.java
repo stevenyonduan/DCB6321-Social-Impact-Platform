@@ -71,6 +71,10 @@ public class User implements Persistable<UUID> {
         if (patch.contains("bio")) bio = patch.value("bio");
     }
 
+    void replaceAvatar(String reference) {
+        avatarUrl = reference;
+    }
+
     static User standardAccount(UUID authUserId, String email, String firstName, String lastName) {
         var user = new User();
         user.id = authUserId;
