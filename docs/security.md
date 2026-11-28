@@ -104,6 +104,13 @@ Only return public profile fields approved by the team; email, saved items, priv
 
 ## Files and transport
 
+Managed profile photos are stored in a dedicated private Storage bucket (bounded D06 decision).
+The avatar API derives the owner and Storage object namespace from the verified session. The
+backend reads the current photo for that account and restricts deletion to managed references
+in the same namespace. Account owners can replace or clear their own photo; failed replacements
+preserve the current reference. The cleanup callbacks may leave orphans if Storage is unavailable
+or the transaction outcome cannot be determined. See the [avatar API contract](api.md#own-profile-photo).
+
 JPEG/PNG images and file type/size validation are approved (DDD p. 19). **PROPOSED safeguards:** inspect actual file signatures, enforce a team-approved byte limit server-side, generate object names, check ownership, restrict buckets and MIME types, and use authorized access/signed URLs for private message files. A browser-supplied MIME type or URL alone is insufficient. Bucket policy, limits, retention and the mismatch between signed URL length/lifetime and `VARCHAR(255)` references are D06. Do not invent volunteer-evidence storage.
 
 HTTPS is required for hosted frontend/API/Auth/Storage traffic. Per the October 29, 2026 university-project deployment request, Render supports `sslmode=require`: database TLS encryption is mandatory, but this mode does not verify the server certificate or hostname and needs no separate CA file. Optional `sslmode=verify-full` remains supported with a trusted CA file; see [deployment configuration](../backend/ACCOUNTS.md#render-account-table-access). Loopback HTTP is acceptable for the scaffold. The backend supports optional exact-origin CORS configuration for `/api/**`; use the Vite development proxy locally. Rate limits and session storage strategy still require review.

@@ -40,6 +40,10 @@ public final class ProfileFailure extends RuntimeException {
                 400, "INVALID_REQUEST", "Supply only valid firstName, lastName or bio updates.");
     }
 
+    public static ProfileFailure avatarMissing() {
+        return new ProfileFailure(404, "AVATAR_NOT_FOUND", "No stored profile photo was found.");
+    }
+
     static ProfileFailure fromAuth(SignupFailure failure) {
         return switch (failure.code()) {
             case "AUTH_UNAVAILABLE" ->
