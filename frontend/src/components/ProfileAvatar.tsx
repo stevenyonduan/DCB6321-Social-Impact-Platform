@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
+import { isManagedAvatar } from '../api/avatar';
 
 function avatarSource(value?: string | null) {
-  if (!value?.trim()) return undefined;
+  if (!value?.trim() || isManagedAvatar(value)) return undefined;
   try {
     const url = new URL(value, window.location.origin);
     if (url.protocol === 'https:' || url.protocol === 'http:') return url.href;
@@ -11,19 +12,23 @@ function avatarSource(value?: string | null) {
 }
 
 export function ProfileAvatar({
+  as: Element = 'div',
   avatarUrl,
+  imageSrc,
   className,
   fallback,
 }: {
+  as?: 'div' | 'span';
   avatarUrl?: string | null;
+  imageSrc?: string;
   className: string;
   fallback: ReactNode;
 }) {
   const [failedSrc, setFailedSrc] = useState<string>();
-  const src = avatarSource(avatarUrl);
+  const src = imageSrc ?? avatarSource(avatarUrl);
 
   return (
-    <div className={`avatar ${className}`} aria-hidden="true">
+    <Element className={`avatar ${className}`} aria-hidden="true">
       {src && src !== failedSrc ? (
         <img
           src={src}
@@ -34,6 +39,6 @@ export function ProfileAvatar({
       ) : (
         fallback
       )}
-    </div>
+    </Element>
   );
 }

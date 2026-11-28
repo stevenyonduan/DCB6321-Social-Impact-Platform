@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Post } from '../api/posts';
 import type { CommunityAccount } from './CommunityPost';
-import { PostActionMenu } from './PostActionMenu';
+import { ActionMenu } from './ActionMenu';
 import { PostEditor, type PostEditAction } from './PostEditor';
 
 export function PostOptions({
@@ -44,7 +44,7 @@ export function PostOptions({
 
   const actions = [{ label: 'Copy link', select: () => void copyLink() }];
   return (
-    <PostActionMenu
+    <ActionMenu
       label="Post options"
       trigger={trigger}
       onOpen={() => setCopyState(undefined)}
@@ -92,6 +92,6 @@ export function PostOptions({
           }}
         />
       )}
-    </PostActionMenu>
+    </ActionMenu>
   );
 }

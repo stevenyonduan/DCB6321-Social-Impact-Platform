@@ -7,12 +7,13 @@ import {
   type RefObject,
 } from 'react';
 
-export function PostEditorDialog({
+export function FormDialog({
   title,
   initialFocus,
   busy,
   onClose,
   onSubmit,
+  className = 'post-editor',
   children,
 }: {
   title: string;
@@ -20,6 +21,7 @@ export function PostEditorDialog({
   busy: boolean;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  className?: string;
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -34,7 +36,7 @@ export function PostEditorDialog({
   return (
     <dialog
       ref={dialog}
-      className="preview-dialog organization-form-dialog post-editor"
+      className={`preview-dialog organization-form-dialog ${className}`}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();

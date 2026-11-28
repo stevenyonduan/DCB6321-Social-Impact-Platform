@@ -93,7 +93,7 @@ function authResult(value: unknown): value is AuthResult {
   );
 }
 
-function profile(value: unknown): value is Profile {
+export function isProfile(value: unknown): value is Profile {
   if (!account(value)) return false;
   const record = value as unknown as Record<string, unknown>;
   return (
@@ -109,26 +109,30 @@ function profile(value: unknown): value is Profile {
   );
 }
 
+export function apiFetch(
+  path: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+) {
+  const timeout = AbortSignal.timeout(30000);
+  const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+  return fetch(`${base}${path}`, {
+    ...init,
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+  });
+}
+
 export async function request<T>(
   path: string,
   init: RequestInit,
   validate: (value: unknown) => value is T,
   signal?: AbortSignal,
 ): Promise<T> {
-  const timeout = AbortSignal.timeout(30000);
-  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   try {
-    const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(
-      /\/$/,
-      '',
-    );
-    const response = await fetch(`${base}${path}`, {
-      ...init,
-      signal: combined,
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error',
-    });
+    const response = await apiFetch(path, init, signal);
     let body: unknown;
     if (response.status !== 204) {
       const contentType = response.headers
@@ -198,7 +202,7 @@ export function getProfile(accessToken: string, signal?: AbortSignal) {
         Accept: 'application/json',
       },
     },
-    profile,
+    isProfile,
     signal,
   );
 }
@@ -223,7 +227,7 @@ export async function updateProfile(
       },
       body,
     },
-    profile,
+    isProfile,
     signal,
   );
 }

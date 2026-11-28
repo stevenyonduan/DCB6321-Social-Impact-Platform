@@ -9,7 +9,7 @@ import {
 import { Bookmark, ChevronRight, Pencil } from 'lucide-react';
 import { ApiError, updateProfile, type Profile } from '../api/auth';
 import { PageLink } from '../components/PageLink';
-import { ProfileAvatar } from '../components/ProfileAvatar';
+import { ProfileAvatarEditor } from '../components/ProfileAvatarEditor';
 import {
   InterestPicker,
   ProfileInterestTags,
@@ -41,7 +41,7 @@ export function ProfilePage({
   accessToken: string;
   onUnauthorized: () => void;
   onRefresh: () => void;
-  onProfileUpdated: (updated: Profile) => void;
+  onProfileUpdated: (updated: Profile, section: 'details' | 'avatar') => void;
   onOrganizationCreated: (id: string) => void;
 }) {
   const [draft, setDraft] = useState<{
@@ -122,7 +122,7 @@ export function ProfilePage({
         if (controller.signal.aborted) return;
         if (updated.id !== profile.id)
           throw new ApiError(200, 'INVALID_RESPONSE');
-        onProfileUpdated(updated);
+        onProfileUpdated(updated, 'details');
         setDraft({
           firstName: updated.firstName,
           lastName: updated.lastName,
@@ -169,10 +169,12 @@ export function ProfilePage({
       <div className="home-welcome">
         <div className="content-width profile-intro personal-profile-intro">
           <div className="profile-identity">
-            <ProfileAvatar
-              avatarUrl={profile.avatarUrl}
-              className="profile-avatar"
-              fallback={initials}
+            <ProfileAvatarEditor
+              profile={profile}
+              accessToken={accessToken}
+              initials={initials}
+              onUnauthorized={onUnauthorized}
+              onUpdated={(updated) => onProfileUpdated(updated, 'avatar')}
             />
             <h1>{names.join(' ')}</h1>
           </div>

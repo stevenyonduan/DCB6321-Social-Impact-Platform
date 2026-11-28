@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useContext, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Bookmark, Heart, MessageCircle, UserRound } from 'lucide-react';
 import { ApiError, type Profile } from '../api/auth';
 import {
@@ -10,9 +10,11 @@ import {
   type PostComment,
 } from '../api/posts';
 import { PostImage } from './PostImage';
-import { PostActionMenu } from './PostActionMenu';
-import { PostEditorDialog } from './PostEditorDialog';
+import { ActionMenu } from './ActionMenu';
+import { FormDialog } from './FormDialog';
 import { PostOptions } from './PostOptions';
+import { OwnAvatarContext } from '../auth/ownAvatar';
+import { ProfileAvatar } from './ProfileAvatar';
 
 export type CommunityAccount = {
   profile: Profile;
@@ -47,28 +49,21 @@ export function CommunityAvatar({
   profile: Profile;
   authorId: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const ownAvatar = useContext(OwnAvatarContext);
   const own = authorId === profile.id;
-  const avatar = profile.avatarUrl;
+  const legacyAvatar = profile.avatarUrl;
   const initials = [profile.firstName, profile.lastName]
     .map((name) => Array.from(name.trim())[0])
     .join('')
     .toUpperCase();
   return (
-    <span className="avatar person-avatar community-avatar" aria-hidden="true">
-      {own && !failed && avatar && /^https?:\/\//i.test(avatar) ? (
-        <img
-          src={avatar}
-          alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
-        />
-      ) : own ? (
-        initials
-      ) : (
-        <UserRound aria-hidden="true" />
-      )}
-    </span>
+    <ProfileAvatar
+      as="span"
+      className="person-avatar community-avatar"
+      imageSrc={own ? ownAvatar?.src : undefined}
+      avatarUrl={own && legacyAvatar && /^https?:\/\//i.test(legacyAvatar) ? legacyAvatar : undefined}
+      fallback={own ? initials : <UserRound aria-hidden="true" />}
+    />
   );
 }
 
@@ -454,7 +449,7 @@ function PostComments({
         </div>
       </form>
       {selected && (
-        <PostEditorDialog
+        <FormDialog
           title="Delete comment"
           initialFocus={cancelDelete}
           busy={deleting}
@@ -485,7 +480,7 @@ function PostComments({
               {deleting ? 'Deleting…' : 'Delete comment'}
             </button>
           </div>
-        </PostEditorDialog>
+        </FormDialog>
       )}
     </section>
   );
@@ -498,7 +493,7 @@ function CommentOptions({
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   return (
-    <PostActionMenu
+    <ActionMenu
       label="Comment options"
       trigger={trigger}
       actions={[

@@ -21,8 +21,10 @@ export type PostComment = {
 };
 
 type Page<T> = { items: T[]; hasNext: boolean };
-const maxPostImageBytes = 5 * 1024 * 1024;
-export const postImageTypes = ['image/jpeg', 'image/png'];
+export {
+  imageTypes as postImageTypes,
+  isUploadImage as isPostImage,
+} from './imageFiles';
 const maxTextBytes = 16_384;
 
 export function hasPostText(text: string | null) {
@@ -34,14 +36,6 @@ export function hasPostText(text: string | null) {
       return true;
   }
   return false;
-}
-
-export function isPostImage(file: File) {
-  return (
-    postImageTypes.includes(file.type) &&
-    file.size > 0 &&
-    file.size <= maxPostImageBytes
-  );
 }
 
 function isId(value: unknown): value is string {

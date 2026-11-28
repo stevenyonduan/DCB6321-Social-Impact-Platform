@@ -11,7 +11,7 @@ import {
   type Post,
 } from '../api/posts';
 import type { CommunityAccount } from './CommunityPost';
-import { PostEditorDialog } from './PostEditorDialog';
+import { FormDialog } from './FormDialog';
 import { PostImage } from './PostImage';
 
 export type PostEditAction = 'content' | 'image' | 'delete';
@@ -158,7 +158,7 @@ export function PostEditor({
   }
 
   return (
-    <PostEditorDialog
+    <FormDialog
       title={title}
       initialFocus={
         action === 'content'
@@ -289,6 +289,6 @@ export function PostEditor({
           </>
         )}
       </div>
-    </PostEditorDialog>
+    </FormDialog>
   );
 }

@@ -205,12 +205,22 @@ export function useAccount() {
     signIn,
     logout,
     expireSession,
-    replaceProfile: (profile: Profile, accessToken: string) => {
+    replaceProfile: (
+      profile: Profile,
+      accessToken: string,
+      section: 'details' | 'avatar',
+    ) => {
       setState((current) =>
         current.status === 'ready' &&
         current.accessToken === accessToken &&
         current.profile.id === profile.id
-          ? { ...current, profile }
+          ? {
+              ...current,
+              profile:
+                section === 'avatar'
+                  ? { ...current.profile, avatarUrl: profile.avatarUrl }
+                  : { ...profile, avatarUrl: current.profile.avatarUrl },
+            }
           : current,
       );
     },

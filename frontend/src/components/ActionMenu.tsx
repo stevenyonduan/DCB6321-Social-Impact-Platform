@@ -14,17 +14,23 @@ type Action = {
   destructive?: boolean;
 };
 
-export function PostActionMenu({
+export function ActionMenu({
   label,
   trigger,
   actions,
   onOpen,
+  className = 'post-options',
+  triggerClassName = 'post-options-trigger',
+  icon = <Ellipsis aria-hidden="true" />,
   children,
 }: {
   label: string;
   trigger: RefObject<HTMLButtonElement | null>;
   actions: Action[];
   onOpen?: () => void;
+  className?: string;
+  triggerClassName?: string;
+  icon?: ReactNode;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -57,7 +63,7 @@ export function PostActionMenu({
 
   return (
     <div
-      className="post-options"
+      className={className}
       ref={group}
       onBlur={(event) => {
         if (
@@ -75,7 +81,7 @@ export function PostActionMenu({
     >
       <button
         type="button"
-        className="post-options-trigger"
+        className={triggerClassName}
         aria-label={label}
         aria-expanded={open}
         aria-controls={open ? actionsId : undefined}
@@ -85,7 +91,7 @@ export function PostActionMenu({
           setOpen(!open);
         }}
       >
-        <Ellipsis aria-hidden="true" />
+        {icon}
       </button>
       {open && (
         <div className="post-options-list" id={actionsId}>

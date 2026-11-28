@@ -5,6 +5,7 @@ import { Account } from './pages/Account';
 import { ProfilePage } from './pages/Profile';
 import { OrganizationPage } from './pages/Organization';
 import { useAccount } from './auth/useAccount';
+import { OwnAvatarContext, useOwnAvatar } from './auth/ownAvatar';
 import type { Page } from './navigation';
 import {
   getPage,
@@ -58,6 +59,10 @@ export default function App() {
   const [page, setPage] = useState<Page>(() => getPage());
   const { state, signIn, logout, expireSession, retry, replaceProfile } =
     useAccount();
+  const avatar = useOwnAvatar(
+    state.status === 'ready' ? state : undefined,
+    expireSession,
+  );
   const main = useRef<HTMLElement>(null);
   const accountPage = isAccountPage(page);
   const redirectToLogin = accountPage && state.status === 'anonymous';
@@ -103,7 +108,7 @@ export default function App() {
     setPage(next);
   }
 
-  return (
+  const content = (
     <NavigationContext value={navigate}>
       <a className="skip-link" href="#main-content">
         Skip to content
@@ -219,8 +224,8 @@ export default function App() {
             accessToken={state.accessToken}
             onUnauthorized={expireSession}
             onRefresh={retry}
-            onProfileUpdated={(profile) =>
-              replaceProfile(profile, state.accessToken)
+            onProfileUpdated={(profile, section) =>
+              replaceProfile(profile, state.accessToken, section)
             }
             onOrganizationCreated={(id) => {
               retry();
@@ -241,4 +246,5 @@ export default function App() {
       <Footer />
     </NavigationContext>
   );
+  return <OwnAvatarContext value={avatar}>{content}</OwnAvatarContext>;
 }

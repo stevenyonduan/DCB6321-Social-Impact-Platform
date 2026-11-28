@@ -1408,6 +1408,85 @@ describe('community posts', () => {
   };
   const savedPath = '/api/users/me/saved-posts?page=0&size=100';
 
+  it('shares one authenticated photo across my composer, cards, and comments on every post view', async () => {
+    restore();
+    window.history.replaceState(null, '', '/home');
+    const avatarPath = '/api/users/me/avatar';
+    const avatarUrl = `profile-avatars/avatars/${id}/75ae3610-ac80-4a9b-b393-6f57217f0737.png`;
+    const photoSrc = 'blob:my-shared-avatar';
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => photoSrc);
+      static revokeObjectURL = revoke;
+    });
+    const mine = {
+      ...created,
+      id: 'c597c9f7-4c4f-4c71-83aa-866fa418a5ee',
+      commentCount: 2,
+      saved: true,
+    };
+    const ownComment = {
+      id: 'my-comment', postId: mine.id, authorId: id,
+      content: 'See you at the park.', createdAt: existing.createdAt,
+    };
+    const otherComment = {
+      ...ownComment, id: 'other-comment', authorId: existing.authorId,
+      content: 'I will be there too.',
+    };
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (url === '/api/users/me') return json({ ...profile, avatarUrl });
+      if (url === avatarPath)
+        return new Response(new Uint8Array([1, 2, 3]), {
+          headers: { 'Content-Type': 'image/png' },
+        });
+      if (url === feedPath) return json({ ...emptyFeed, items: [mine, existing] });
+      if (url === savedPath) return json({ ...emptyFeed, items: [mine] });
+      if (url === `/api/posts/${mine.id}`) return json(mine);
+      if (url === `/api/posts/${mine.id}/comments?page=0&size=100`)
+        return json({ ...emptyFeed, items: [ownComment, otherComment] });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { container } = render(<App />);
+    const user = userEvent.setup();
+    const postImage = (text: string) =>
+      screen.getByText(text).closest('article')?.querySelector('.community-avatar img');
+    await screen.findByText(mine.textContent);
+    await waitFor(() =>
+      expect(postImage(mine.textContent)?.getAttribute('src')).toBe(photoSrc),
+    );
+    expect(container.querySelector('.composer .community-avatar img')?.getAttribute('src')).toBe(photoSrc);
+    expect(postImage(existing.textContent)).toBeNull();
+
+    await user.click(screen.getByRole('link', { name: 'Profile' }));
+    await screen.findByRole('region', { name: 'Activity' });
+    await screen.findByText(mine.textContent);
+    expect(postImage(mine.textContent)?.getAttribute('src')).toBe(photoSrc);
+    expect(container.querySelector('.profile-avatar img')?.getAttribute('src')).toBe(photoSrc);
+
+    await user.click(screen.getByRole('link', { name: 'Saved posts' }));
+    await screen.findByRole('heading', { name: 'Saved posts' });
+    await screen.findByText(mine.textContent);
+    expect(postImage(mine.textContent)?.getAttribute('src')).toBe(photoSrc);
+
+    act(() => {
+      window.history.pushState(null, '', `/posts/${mine.id}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await screen.findByText(ownComment.content);
+    expect(postImage(mine.textContent)?.getAttribute('src')).toBe(photoSrc);
+    const commentImage = (text: string) =>
+      screen.getByText(text).closest('li')?.querySelector('.community-avatar img');
+    expect(commentImage(ownComment.content)?.getAttribute('src')).toBe(photoSrc);
+    expect(commentImage(otherComment.content)).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => url === avatarPath)).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledWith(avatarPath, expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+    }));
+
+    await user.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith(photoSrc));
+  });
+
   it('publishes inline, shows the post first, and loads comments only when expanded', async () => {
     restore();
     window.history.replaceState(null, '', '/home');
