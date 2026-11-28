@@ -12,6 +12,12 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
+vi.mock('./api/interests', () => ({
+  loadInterestCatalog: async () => [],
+  loadInterestSelection: async () => [],
+  saveInterestSelection: async () => [],
+}));
+
 const auth = vi.hoisted(() => ({
   listeners: new Set<(event: string, session: unknown) => void>(),
   getSession: vi.fn(),

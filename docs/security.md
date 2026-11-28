@@ -68,6 +68,9 @@ association/role and preserves its global role. Conditional claims, organization
 commit in one transaction. Clients cannot supply identity, role, association or verification.
 Only organization OWNER/ADMIN with a matching persisted association can edit or publish;
 global ADMIN grants no override. V002/V004 preserve backend-only application-table access.
+Signed-in application accounts can also read the catalog labels shown on an organization's profile.
+The read returns only the selected interest IDs and labels. Organization interest writes follow the
+same matching OWNER/ADMIN rule as profile edits.
 
 The design requires login for platform access, distinct STANDARD/ADMIN/ORGANIZATION permissions, private saved posts, moderation of posts/comments and authorized organization management/verification. Exact matrix is **PROPOSED**, pending D02:
 

@@ -2,24 +2,27 @@
 
 ## Interest catalog and selections
 
-These endpoints require a verified Bearer token and a persisted application account. The
-organization routes also require an OWNER or ADMIN association with the organization.
+These endpoints require a verified Bearer token and a persisted application account. Any signed-in
+account can read the interest tags shown on an organization's profile. The organization `/me`
+routes require an OWNER or ADMIN association with the organization.
 
 | Method | URL | Behavior |
 | --- | --- | --- |
 | GET | `/api/interests` | List the curated interest catalog |
+| GET | `/api/organizations/{organizationId}/interests` | Read the selected interests for the organization profile |
 | GET | `/api/users/me/interests` | Read the caller's personal selections |
 | PUT | `/api/users/me/interests` | Replace the caller's personal selections |
 | GET | `/api/organizations/me/interests` | Read the caller's organization selections |
 | PUT | `/api/organizations/me/interests` | Replace the caller's organization selections |
 
 Each successful response is a `200` JSON array of `{ "id": "<UUID>", "name": "<label>" }`
-objects sorted by name. The organization ID comes from the caller's persisted association.
+objects sorted by name. The organization ID for `/me` comes from the caller's persisted association.
 Send a PUT with `Content-Type: application/json` and `{ "interestIds": ["<UUID>"] }`.
 Send an empty array to clear the selections. Duplicate IDs are treated as one selection.
 An unknown ID returns `400 UNKNOWN_INTEREST` and preserves all previous selections.
 Missing or malformed input returns `400 INVALID_REQUEST`; non-managers receive `403 FORBIDDEN`
-on the organization routes. All responses use `Cache-Control: no-store`.
+on the organization `/me` routes. A missing organization profile returns `404 ORGANIZATION_NOT_FOUND`.
+All responses use `Cache-Control: no-store`.
 
 [V007](../backend/db/migrations/V007__create_interests.sql) is an additive, manual migration.
 Apply it once to the target database before the backend release that uses it, and verify that

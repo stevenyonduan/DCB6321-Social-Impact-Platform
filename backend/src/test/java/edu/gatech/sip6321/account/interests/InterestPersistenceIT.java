@@ -171,6 +171,33 @@ class InterestPersistenceIT {
     }
 
     @Test
+    void signedInVisitorsCanReadOnlyTheSelectedOrganizationTags() throws Exception {
+        var organization = organization(jdbc);
+        var another = organization(jdbc);
+        account("owner", organization, "OWNER");
+        account("visitor", another, "ADMIN");
+        save(ORGANIZATION, "owner", json(FIRST), 200);
+        save(ORGANIZATION, "visitor", json(SECOND), 200);
+        var route = "/api/organizations/" + organization + "/interests";
+
+        list(route, "visitor")
+                .andExpect(
+                        content()
+                                .json(
+                                        """
+                        [{"id":"%s","name":"Animal Welfare"}]
+                        """
+                                                .formatted(FIRST),
+                                        org.springframework.test.json.JsonCompareMode.STRICT));
+        mvc.perform(get(route)).andExpect(status().isUnauthorized());
+        mvc.perform(
+                        get("/api/organizations/" + UUID.randomUUID() + "/interests")
+                                .header("Authorization", "Bearer visitor"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ORGANIZATION_NOT_FOUND"));
+    }
+
+    @Test
     void simultaneousOrganizationReplacementsLeaveOneCompleteSelection() throws Exception {
         var organization = organization(jdbc);
         account("owner", organization, "OWNER");

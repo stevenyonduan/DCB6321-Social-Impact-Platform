@@ -9,6 +9,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.transaction.TransactionException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice(assignableTypes = InterestController.class)
 class InterestExceptionHandler {
@@ -30,6 +31,11 @@ class InterestExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<Error> invalidRequest() {
         return error(400, "INVALID_REQUEST", "Send an interestIds array of interest UUIDs.");
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<Error> invalidOrganizationId() {
+        return error(400, "INVALID_REQUEST", "Use a valid organization ID.");
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
