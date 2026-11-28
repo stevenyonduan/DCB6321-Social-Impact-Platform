@@ -36,6 +36,14 @@ class InterestControllerTest {
     }
 
     @Test
+    void organizationInterestReadRejectsAnInvalidOrganizationId() throws Exception {
+        mvc.perform(get("/api/organizations/invalid/interests").header("Authorization", TOKEN))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verifyNoInteractions(interests);
+    }
+
+    @Test
     void anEmptySelectionClearsTheList() throws Exception {
         when(interests.replaceUserSelections(List.of(TOKEN), new InterestSelection(Set.of())))
                 .thenReturn(List.of());

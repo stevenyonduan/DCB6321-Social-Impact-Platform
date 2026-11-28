@@ -1,6 +1,7 @@
 package edu.gatech.sip6321.account.interests;
 
 import java.util.List;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -38,6 +39,14 @@ class InterestController {
     ResponseEntity<List<InterestOption>> organizationSelections(
             @RequestHeader HttpHeaders headers) {
         return response(interests.organizationSelections(headers.get(HttpHeaders.AUTHORIZATION)));
+    }
+
+    @GetMapping("/api/organizations/{organizationId}/interests")
+    ResponseEntity<List<InterestOption>> organizationInterests(
+            @RequestHeader HttpHeaders headers, @PathVariable UUID organizationId) {
+        return response(
+                interests.organizationInterests(
+                        headers.get(HttpHeaders.AUTHORIZATION), organizationId));
     }
 
     @PutMapping(path = "/api/organizations/me/interests", consumes = "application/json")

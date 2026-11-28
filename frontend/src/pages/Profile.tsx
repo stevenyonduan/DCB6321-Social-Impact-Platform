@@ -10,6 +10,11 @@ import { Bookmark, ChevronRight, Pencil } from 'lucide-react';
 import { ApiError, updateProfile, type Profile } from '../api/auth';
 import { PageLink } from '../components/PageLink';
 import { ProfileAvatar } from '../components/ProfileAvatar';
+import {
+  InterestPicker,
+  ProfileInterestTags,
+} from '../components/ProfileInterests';
+import { useProfileInterests } from '../components/useProfileInterests';
 import { ProfileOrganization } from './ProfileOrganization';
 
 const MyActivity = lazy(() =>
@@ -51,6 +56,11 @@ export function ProfilePage({
   const editButton = useRef<HTMLButtonElement>(null);
   const firstNameInput = useRef<HTMLInputElement>(null);
   const editing = draft !== undefined;
+  const interests = useProfileInterests({
+    editing,
+    accessToken,
+    onUnauthorized,
+  });
 
   useEffect(() => () => pendingSave.current?.abort(), []);
   useEffect(() => {
@@ -63,6 +73,7 @@ export function ProfilePage({
     .join('')
     .toUpperCase();
   function closeEditor() {
+    interests.close();
     setDraft(undefined);
     setSaveError('');
     requestAnimationFrame(() => editButton.current?.focus());
@@ -87,7 +98,10 @@ export function ProfilePage({
       setSaveError('Enter a first and last name of 1 to 100 characters each.');
       return;
     }
-    if (Object.values(patch).every((value) => value === undefined)) {
+    const detailsChanged = Object.values(patch).some(
+      (value) => value !== undefined,
+    );
+    if (!detailsChanged && !interests.changed) {
       closeEditor();
       return;
     }
@@ -96,22 +110,43 @@ export function ProfilePage({
     pendingSave.current = controller;
     setSaving(true);
     setSaveError('');
+    let detailsSaved = false;
+    let savingInterests = false;
     try {
-      const updated = await updateProfile(
-        patch,
-        accessToken,
-        controller.signal,
-      );
-      if (controller.signal.aborted) return;
-      if (updated.id !== profile.id)
-        throw new ApiError(200, 'INVALID_RESPONSE');
-      onProfileUpdated(updated);
+      if (detailsChanged) {
+        const updated = await updateProfile(
+          patch,
+          accessToken,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        if (updated.id !== profile.id)
+          throw new ApiError(200, 'INVALID_RESPONSE');
+        onProfileUpdated(updated);
+        setDraft({
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          bio: updated.bio ?? '',
+        });
+        detailsSaved = true;
+      }
+      if (interests.changed) {
+        savingInterests = true;
+        await interests.save(controller.signal);
+        if (controller.signal.aborted) return;
+      }
       setSaved(true);
       closeEditor();
     } catch (error) {
       if (controller.signal.aborted) return;
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized();
+      } else if (savingInterests) {
+        setSaveError(
+          detailsSaved
+            ? 'Profile details saved. Interests could not be saved. Try again.'
+            : 'Interests could not be saved. Try again.',
+        );
       } else if (error instanceof ApiError && error.status === 413) {
         setSaveError(
           'Your profile update is too large. Try shortening your bio.',
@@ -205,6 +240,7 @@ export function ProfilePage({
                   }
                 />
               </label>
+              <InterestPicker interests={interests} />
               {saveError && (
                 <p className="form-error" role="alert">
                   {saveError}
@@ -229,6 +265,7 @@ export function ProfilePage({
             ) : (
               <p className="profile-empty">No bio yet.</p>
             )}
+            <ProfileInterestTags interests={interests} editing={editing} />
           </section>
           <PageLink
             className="profile-card saved-posts-link"

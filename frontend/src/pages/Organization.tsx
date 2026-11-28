@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { ArrowUpRight, CircleCheck, Pencil } from 'lucide-react';
 import { ApiError, type Profile } from '../api/auth';
 import {
@@ -6,6 +12,11 @@ import {
   organizationRequest,
   type OrganizationProfile,
 } from '../api/organizations';
+import {
+  InterestPicker,
+  ProfileInterestTags,
+} from '../components/ProfileInterests';
+import { useProfileInterests } from '../components/useProfileInterests';
 import { EditOrganizationAdmins } from './EditOrganizationAdmins';
 import { OrganizationOpportunities } from './OrganizationOpportunities';
 
@@ -56,6 +67,21 @@ export function OrganizationPage({
   const pendingSave = useRef<AbortController | null>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const feedback = useRef<HTMLParagraphElement>(null);
+  const canManage = canEditOrganization(account, id);
+  const canEdit = canManage && !denied;
+  const denyEditing = useCallback((message: string) => {
+    setDenied(true);
+    setDraft(undefined);
+    setSaveError(message);
+    requestAnimationFrame(() => feedback.current?.focus());
+  }, []);
+  const interests = useProfileInterests({
+    organizationId: id,
+    editing: canEdit && draft !== undefined,
+    enabled: organization !== undefined,
+    accessToken,
+    onUnauthorized,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,13 +138,12 @@ export function OrganizationPage({
   }
 
   const profile = organization;
-  const canManage = canEditOrganization(account, id);
-  const canEdit = canManage && !denied;
   const canEditAdmins =
     account.organizationId === id && account.organizationRole === 'OWNER';
   const website = websiteUrl(profile.website);
 
   function closeEditor() {
+    interests.close();
     setDraft(undefined);
     setSaveError('');
     requestAnimationFrame(() => editButton.current?.focus());
@@ -149,7 +174,8 @@ export function OrganizationPage({
         website: draft.website || null,
       }),
     };
-    if (Object.keys(patch).length === 0) {
+    const detailsChanged = Object.keys(patch).length > 0;
+    if (!detailsChanged && !interests.changed) {
       closeEditor();
       return;
     }
@@ -157,15 +183,30 @@ export function OrganizationPage({
     pendingSave.current = controller;
     setSaving(true);
     setSaveError('');
+    let detailsSaved = false;
+    let savingInterests = false;
     try {
-      const updated = await organizationRequest(
-        id,
-        accessToken,
-        controller.signal,
-        patch,
-      );
-      if (controller.signal.aborted) return;
-      setOrganization(updated);
+      if (detailsChanged) {
+        const updated = await organizationRequest(
+          id,
+          accessToken,
+          controller.signal,
+          patch,
+        );
+        if (controller.signal.aborted) return;
+        setOrganization(updated);
+        setDraft({
+          name: updated.name,
+          description: updated.description ?? '',
+          website: updated.website ?? '',
+        });
+        detailsSaved = true;
+      }
+      if (interests.changed) {
+        savingInterests = true;
+        await interests.save(controller.signal);
+        if (controller.signal.aborted) return;
+      }
       setSaved(true);
       closeEditor();
     } catch (error) {
@@ -173,12 +214,18 @@ export function OrganizationPage({
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized();
       } else if (error instanceof ApiError && error.status === 403) {
-        setDenied(true);
-        setDraft(undefined);
-        setSaveError(
-          'Changes were not saved. You do not have permission to edit this organization.',
+        interests.close();
+        denyEditing(
+          detailsSaved
+            ? 'Organization details saved. You no longer have permission to save its interests.'
+            : 'Changes were not saved. You do not have permission to edit this organization.',
         );
-        requestAnimationFrame(() => feedback.current?.focus());
+      } else if (savingInterests) {
+        setSaveError(
+          detailsSaved
+            ? 'Organization details saved. Interests could not be saved. Try again.'
+            : 'Interests could not be saved. Try again.',
+        );
       } else {
         setSaveError(
           error instanceof ApiError && error.status === 400
@@ -253,7 +300,7 @@ export function OrganizationPage({
             Organization profile updated.
           </p>
         )}
-        {draft && (
+        {canEdit && draft && (
           <form
             className="profile-card organization-wide"
             aria-labelledby="organization-edit"
@@ -292,6 +339,7 @@ export function OrganizationPage({
                   }
                 />
               </label>
+              <InterestPicker interests={interests} />
               {saveError && (
                 <p className="form-error" role="alert">
                   {saveError}
@@ -315,6 +363,10 @@ export function OrganizationPage({
           ) : (
             <p className="profile-empty">No description yet.</p>
           )}
+          <ProfileInterestTags
+            interests={interests}
+            editing={canEdit && draft !== undefined}
+          />
         </section>
         <section
           className="profile-card"
